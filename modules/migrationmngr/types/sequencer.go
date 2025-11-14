@@ -28,23 +28,3 @@ func (seq *Sequencer) UnpackInterfaces(unpacker codectypes.AnyUnpacker) error {
 	var pk cryptotypes.PubKey
 	return unpacker.UnpackAny(seq.ConsensusPubkey, &pk)
 }
-
-// TmConsPublicKey converts the Sequencer's ConsensusPubkey to a CometBFT PublicKey type.
-func (att *Attester) TmConsPublicKey() (cmtprotocrypto.PublicKey, error) {
-	pk, ok := att.ConsensusPubkey.GetCachedValue().(cryptotypes.PubKey)
-	if !ok {
-		return cmtprotocrypto.PublicKey{}, errors.Wrapf(sdkerrors.ErrInvalidType, "expecting cryptotypes.PubKey, got %T", pk)
-	}
-
-	tmPk, err := cryptocodec.ToCmtProtoPublicKey(pk)
-	if err != nil {
-		return cmtprotocrypto.PublicKey{}, err
-	}
-	return tmPk, nil
-}
-
-// UnpackInterfaces implements UnpackInterfacesMessage.UnpackInterfaces
-func (att *Attester) UnpackInterfaces(unpacker codectypes.AnyUnpacker) error {
-	var pk cryptotypes.PubKey
-	return unpacker.UnpackAny(att.ConsensusPubkey, &pk)
-}

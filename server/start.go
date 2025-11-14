@@ -14,7 +14,6 @@ import (
 
 	"cosmossdk.io/log"
 	cmtcfg "github.com/cometbft/cometbft/config"
-	cmtjson "github.com/cometbft/cometbft/libs/json"
 	"github.com/cometbft/cometbft/mempool"
 	cmtp2p "github.com/cometbft/cometbft/p2p"
 	pvm "github.com/cometbft/cometbft/privval"
@@ -351,57 +350,27 @@ func setupNodeAndExecutor(
 		daStartHeight uint64
 	)
 
-	// determine the genesis source: evolve genesis or app genesis
-	migrationGenesis, err := loadEvolveMigrationGenesis(cfg.RootDir)
+	// create evolve genesis from full cometbft genesis
+	appGenesis, err = getAppGenesis(cfg)
 	if err != nil {
 		return nil, nil, cleanupFn, err
 	}
 
-	if migrationGenesis != nil {
-		evGenesis = migrationGenesis.ToEVGenesis()
-
-		sdkLogger.Info("using evolve migration genesis",
-			"chain_id", migrationGenesis.ChainID,
-			"initial_height", migrationGenesis.InitialHeight)
-
-		// this genesis is technically not needed, as abci exec won't run init chain again.
-		appGenesis = &genutiltypes.AppGenesis{
-			ChainID:       migrationGenesis.ChainID,
-			InitialHeight: int64(migrationGenesis.InitialHeight),
-			GenesisTime:   evGenesis.StartTime,
-			Consensus: &genutiltypes.ConsensusGenesis{ // used in rpc/status.go
-				Validators: []cmttypes.GenesisValidator{
-					{
-						Address: migrationGenesis.SequencerAddr,
-						PubKey:  migrationGenesis.SequencerPubKey,
-						Power:   1,
-					},
-				},
-			},
-		}
-	} else {
-		// normal scenario: create evolve genesis from full cometbft genesis
-		appGenesis, err = getAppGenesis(cfg)
-		if err != nil {
-			return nil, nil, cleanupFn, err
-		}
-
-		daStartHeight, err = getDaStartHeight(cfg)
-		if err != nil {
-			return nil, nil, cleanupFn, err
-		}
-
-		cmtGenDoc, err := appGenesis.ToGenesisDoc()
-		if err != nil {
-			return nil, nil, cleanupFn, err
-		}
-
-		evGenesis = createEvolveGenesisFromCometBFT(cmtGenDoc, daStartHeight)
-
-		sdkLogger.Info("created evolve genesis from cometbft genesis",
-			"chain_id", cmtGenDoc.ChainID,
-			"initial_height", cmtGenDoc.InitialHeight)
+	daStartHeight, err = getDaStartHeight(cfg)
+	if err != nil {
+		return nil, nil, cleanupFn, err
 	}
+
+	cmtGenDoc, err := appGenesis.ToGenesisDoc()
+	if err != nil {
+		return nil, nil, cleanupFn, err
+	}
+
+	evGenesis = createEvolveGenesisFromCometBFT(cmtGenDoc, daStartHeight)
+
+	sdkLogger.Info("created evolve genesis from cometbft genesis",
+		"chain_id", cmtGenDoc.ChainID,
+		"initial_height", cmtGenDoc.InitialHeight)
 
 	database, err := openRawEvolveDB(cfg.RootDir)
 	if err != nil {
@@ -765,30 +734,6 @@ func initProxyApp(clientCreator proxy.ClientCreator, logger log.Logger, metrics 
 		return nil, fmt.Errorf("error while starting proxy app connections: %w", err)
 	}
 	return proxyApp, nil
-}
-
-const evolveGenesisFilename = "ev_genesis.json"
-
-// loadEvolveMigrationGenesis loads a minimal evolve genesis from a migration genesis file.
-// Returns nil if no migration genesis is found (normal startup scenario).
-func loadEvolveMigrationGenesis(rootDir string) (*evolveMigrationGenesis, error) {
-	genesisPath := filepath.Join(rootDir, evolveGenesisFilename)
-	if _, err := os.Stat(genesisPath); os.IsNotExist(err) {
-		return nil, nil // no migration genesis found
-	}
-
-	genesisBytes, err := os.ReadFile(genesisPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read evolve migration genesis: %w", err)
-	}
-
-	var migrationGenesis evolveMigrationGenesis
-	// using cmtjson for unmarshalling to ensure compatibility with cometbft genesis format
-	if err := cmtjson.Unmarshal(genesisBytes, &migrationGenesis); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal evolve migration genesis: %w", err)
-	}
-
-	return &migrationGenesis, nil
 }
 
 // createEvolveGenesisFromCometBFT creates a evolve genesis from cometbft genesis.

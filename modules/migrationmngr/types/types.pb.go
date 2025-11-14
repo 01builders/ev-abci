@@ -26,33 +26,28 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// EvolveMigration defines the migration state from cometbft to Evolve.
-type EvolveMigration struct {
-	// block height that trigger the Evolve migration.
+// Migration defines the migration state for unbonding validators.
+type Migration struct {
+	// block height that triggers the migration.
 	// When IBC is enabled, the migration can take several blocks to complete.
 	// This is the block height at which the migration will be triggered.
 	BlockHeight uint64 `protobuf:"varint,2,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
 	// sequencer is the pubkey that will become new sequencer.
 	Sequencer Sequencer `protobuf:"bytes,3,opt,name=sequencer,proto3" json:"sequencer"`
-	// attesters is the list of attesters that will attest to blocks.
-	Attesters []Attester `protobuf:"bytes,4,rep,name=attesters,proto3" json:"attesters"`
-	// stay_on_comet can be specified to prevent the chain from halting, and just switch out to
-	// a single validator.
-	StayOnComet bool `protobuf:"varint,5,opt,name=stay_on_comet,json=stayOnComet,proto3" json:"stay_on_comet,omitempty"`
 }
 
-func (m *EvolveMigration) Reset()         { *m = EvolveMigration{} }
-func (m *EvolveMigration) String() string { return proto.CompactTextString(m) }
-func (*EvolveMigration) ProtoMessage()    {}
-func (*EvolveMigration) Descriptor() ([]byte, []int) {
+func (m *Migration) Reset()         { *m = Migration{} }
+func (m *Migration) String() string { return proto.CompactTextString(m) }
+func (*Migration) ProtoMessage()    {}
+func (*Migration) Descriptor() ([]byte, []int) {
 	return fileDescriptor_c2804a23bbabbd69, []int{0}
 }
-func (m *EvolveMigration) XXX_Unmarshal(b []byte) error {
+func (m *Migration) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *EvolveMigration) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *Migration) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_EvolveMigration.Marshal(b, m, deterministic)
+		return xxx_messageInfo_Migration.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -62,47 +57,33 @@ func (m *EvolveMigration) XXX_Marshal(b []byte, deterministic bool) ([]byte, err
 		return b[:n], nil
 	}
 }
-func (m *EvolveMigration) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_EvolveMigration.Merge(m, src)
+func (m *Migration) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_Migration.Merge(m, src)
 }
-func (m *EvolveMigration) XXX_Size() int {
+func (m *Migration) XXX_Size() int {
 	return m.Size()
 }
-func (m *EvolveMigration) XXX_DiscardUnknown() {
-	xxx_messageInfo_EvolveMigration.DiscardUnknown(m)
+func (m *Migration) XXX_DiscardUnknown() {
+	xxx_messageInfo_Migration.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_EvolveMigration proto.InternalMessageInfo
+var xxx_messageInfo_Migration proto.InternalMessageInfo
 
-func (m *EvolveMigration) GetBlockHeight() uint64 {
+func (m *Migration) GetBlockHeight() uint64 {
 	if m != nil {
 		return m.BlockHeight
 	}
 	return 0
 }
 
-func (m *EvolveMigration) GetSequencer() Sequencer {
+func (m *Migration) GetSequencer() Sequencer {
 	if m != nil {
 		return m.Sequencer
 	}
 	return Sequencer{}
 }
 
-func (m *EvolveMigration) GetAttesters() []Attester {
-	if m != nil {
-		return m.Attesters
-	}
-	return nil
-}
-
-func (m *EvolveMigration) GetStayOnComet() bool {
-	if m != nil {
-		return m.StayOnComet
-	}
-	return false
-}
-
-// Sequencer defines a sequence of instructions to be executed.
+// Sequencer defines a sequencer that can validate blocks.
 type Sequencer struct {
 	// name is the human-readable name of the sequencer.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -158,66 +139,9 @@ func (m *Sequencer) GetConsensusPubkey() *types.Any {
 	return nil
 }
 
-// Attester defines an attester that can attest to blocks.
-type Attester struct {
-	// name is the human-readable name of the attester.
-	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	// consensus_pubkey is the consensus public key of the attester, as a
-	// Protobuf Any.
-	ConsensusPubkey *types.Any `protobuf:"bytes,2,opt,name=consensus_pubkey,json=consensusPubkey,proto3" json:"consensus_pubkey,omitempty"`
-}
-
-func (m *Attester) Reset()         { *m = Attester{} }
-func (m *Attester) String() string { return proto.CompactTextString(m) }
-func (*Attester) ProtoMessage()    {}
-func (*Attester) Descriptor() ([]byte, []int) {
-	return fileDescriptor_c2804a23bbabbd69, []int{2}
-}
-func (m *Attester) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *Attester) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_Attester.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *Attester) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Attester.Merge(m, src)
-}
-func (m *Attester) XXX_Size() int {
-	return m.Size()
-}
-func (m *Attester) XXX_DiscardUnknown() {
-	xxx_messageInfo_Attester.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_Attester proto.InternalMessageInfo
-
-func (m *Attester) GetName() string {
-	if m != nil {
-		return m.Name
-	}
-	return ""
-}
-
-func (m *Attester) GetConsensusPubkey() *types.Any {
-	if m != nil {
-		return m.ConsensusPubkey
-	}
-	return nil
-}
-
 func init() {
-	proto.RegisterType((*EvolveMigration)(nil), "evabci.migrationmngr.v1.EvolveMigration")
+	proto.RegisterType((*Migration)(nil), "evabci.migrationmngr.v1.Migration")
 	proto.RegisterType((*Sequencer)(nil), "evabci.migrationmngr.v1.Sequencer")
-	proto.RegisterType((*Attester)(nil), "evabci.migrationmngr.v1.Attester")
 }
 
 func init() {
@@ -225,37 +149,33 @@ func init() {
 }
 
 var fileDescriptor_c2804a23bbabbd69 = []byte{
-	// 428 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xbc, 0x52, 0xc1, 0x8a, 0xd4, 0x40,
-	0x10, 0x9d, 0x76, 0x47, 0xd9, 0x74, 0x94, 0xd5, 0x30, 0x60, 0xdc, 0x43, 0xcc, 0xc6, 0x4b, 0x10,
-	0xb6, 0x9b, 0x1d, 0xc1, 0xfb, 0x8e, 0x08, 0xe2, 0x22, 0x0e, 0xf1, 0xa4, 0x97, 0x90, 0xb4, 0x65,
-	0x26, 0xcc, 0xa4, 0x6b, 0x4c, 0x77, 0x02, 0xed, 0x57, 0xf8, 0x19, 0x1e, 0x3d, 0xf8, 0x11, 0x8b,
-	0xa7, 0x3d, 0x7a, 0x12, 0x99, 0x39, 0x78, 0xf6, 0x0f, 0x64, 0x3a, 0x93, 0x91, 0x15, 0xf6, 0xba,
-	0x97, 0xa6, 0xfa, 0xd5, 0xab, 0x57, 0x55, 0x8f, 0xa2, 0x8f, 0xa0, 0xcd, 0x72, 0x51, 0xf2, 0xaa,
-	0x2c, 0xea, 0x4c, 0x97, 0x28, 0x2b, 0x59, 0xd4, 0xbc, 0x3d, 0xe1, 0xda, 0x2c, 0x41, 0xb1, 0x65,
-	0x8d, 0x1a, 0xbd, 0xfb, 0x1d, 0x89, 0x5d, 0x22, 0xb1, 0xf6, 0xe4, 0xf0, 0x5e, 0x56, 0x95, 0x12,
-	0xb9, 0x7d, 0x3b, 0xee, 0xe1, 0xa8, 0xc0, 0x02, 0x6d, 0xc8, 0x37, 0xd1, 0x16, 0x7d, 0x20, 0x50,
-	0x55, 0xa8, 0xd2, 0x2e, 0xd1, 0x7d, 0xfa, 0x54, 0x81, 0x58, 0x2c, 0x80, 0xdb, 0x5f, 0xde, 0x7c,
-	0xe0, 0x99, 0x34, 0x5d, 0x2a, 0xfa, 0x43, 0xe8, 0xc1, 0xf3, 0x16, 0x17, 0x2d, 0xbc, 0xea, 0x3b,
-	0x7b, 0x47, 0xf4, 0x76, 0xbe, 0x40, 0x31, 0x4f, 0x67, 0x50, 0x16, 0x33, 0xed, 0xdf, 0x08, 0x49,
-	0x3c, 0x4c, 0x5c, 0x8b, 0xbd, 0xb0, 0x90, 0x77, 0x46, 0x1d, 0x05, 0x1f, 0x1b, 0x90, 0x02, 0x6a,
-	0x7f, 0x2f, 0x24, 0xb1, 0x3b, 0x8e, 0xd8, 0x15, 0x2b, 0xb0, 0x37, 0x3d, 0x73, 0xe2, 0x9c, 0xff,
-	0x7c, 0x38, 0xf8, 0xf2, 0xfb, 0xeb, 0x63, 0x92, 0xfc, 0xab, 0xf7, 0x5e, 0x52, 0x27, 0xd3, 0x1a,
-	0x94, 0x86, 0x5a, 0xf9, 0xc3, 0x70, 0x2f, 0x76, 0xc7, 0x47, 0x57, 0x8a, 0x9d, 0x6e, 0x99, 0x97,
-	0xb4, 0x76, 0xe5, 0x5e, 0x44, 0xef, 0x28, 0x9d, 0x99, 0x14, 0x65, 0x2a, 0xb0, 0x02, 0xed, 0xdf,
-	0x0c, 0x49, 0xbc, 0x9f, 0xb8, 0x1b, 0xf0, 0xb5, 0x7c, 0xb6, 0x81, 0xa2, 0x4f, 0xd4, 0xd9, 0x8d,
-	0xe4, 0x79, 0x74, 0x28, 0xb3, 0x0a, 0x7c, 0x12, 0x92, 0xd8, 0x49, 0x6c, 0xec, 0xbd, 0xa5, 0x77,
-	0x05, 0x4a, 0x05, 0x52, 0x35, 0x2a, 0x5d, 0x36, 0xf9, 0x1c, 0x8c, 0x35, 0xc1, 0x1d, 0x8f, 0x58,
-	0x67, 0x25, 0xeb, 0xad, 0x64, 0xa7, 0xd2, 0x4c, 0xfc, 0xef, 0xdf, 0x8e, 0x47, 0x5b, 0xc7, 0x45,
-	0x6d, 0x96, 0x1a, 0xd9, 0xb4, 0xc9, 0xcf, 0xc0, 0x24, 0x07, 0x3b, 0x9d, 0xa9, 0x95, 0x89, 0x0c,
-	0xdd, 0xef, 0x37, 0xb8, 0xe6, 0xd6, 0x93, 0xe9, 0xf9, 0x2a, 0x20, 0x17, 0xab, 0x80, 0xfc, 0x5a,
-	0x05, 0xe4, 0xf3, 0x3a, 0x18, 0x5c, 0xac, 0x83, 0xc1, 0x8f, 0x75, 0x30, 0x78, 0xf7, 0xb4, 0x28,
-	0xf5, 0xac, 0xc9, 0x99, 0xc0, 0x8a, 0x43, 0xab, 0x74, 0x26, 0xe6, 0x1c, 0xda, 0xe3, 0xee, 0x6a,
-	0xf1, 0x7d, 0xb3, 0x00, 0xf5, 0xdf, 0xf5, 0xda, 0xd3, 0xcd, 0x6f, 0xd9, 0x51, 0x9e, 0xfc, 0x0d,
-	0x00, 0x00, 0xff, 0xff, 0xcd, 0x31, 0x22, 0x4c, 0xe2, 0x02, 0x00, 0x00,
+	// 357 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x51, 0xc1, 0x4a, 0xeb, 0x40,
+	0x14, 0xcd, 0xbc, 0x57, 0x1e, 0x24, 0x7d, 0xf0, 0x9e, 0xa1, 0x60, 0xec, 0x22, 0xd6, 0xba, 0x29,
+	0x42, 0x67, 0x68, 0x05, 0xf7, 0x76, 0x25, 0x14, 0xa1, 0xc4, 0x95, 0x6e, 0x4a, 0x32, 0x5e, 0xa7,
+	0xa1, 0xcd, 0xdc, 0x98, 0x49, 0x02, 0xd1, 0x9f, 0xf0, 0x33, 0x5c, 0xba, 0xf0, 0x23, 0x8a, 0xab,
+	0x2e, 0x5d, 0x89, 0xb4, 0x0b, 0x7f, 0x43, 0x9c, 0x34, 0x15, 0x05, 0x37, 0xe1, 0xde, 0x73, 0x4e,
+	0xee, 0x9c, 0xc3, 0xb1, 0xf6, 0x21, 0xf7, 0x03, 0x1e, 0xb2, 0x28, 0x14, 0x89, 0x9f, 0x86, 0x28,
+	0x23, 0x29, 0x12, 0x96, 0xf7, 0x58, 0x5a, 0xc4, 0xa0, 0x68, 0x9c, 0x60, 0x8a, 0xf6, 0x76, 0x29,
+	0xa2, 0x5f, 0x44, 0x34, 0xef, 0x35, 0xb7, 0xfc, 0x28, 0x94, 0xc8, 0xf4, 0xb7, 0xd4, 0x36, 0x1b,
+	0x02, 0x05, 0xea, 0x91, 0x7d, 0x4c, 0x6b, 0x74, 0x87, 0xa3, 0x8a, 0x50, 0x8d, 0x4b, 0xa2, 0x5c,
+	0x2a, 0x4a, 0x20, 0x8a, 0x19, 0x30, 0xbd, 0x05, 0xd9, 0x15, 0xf3, 0x65, 0x51, 0x52, 0xed, 0x5b,
+	0xcb, 0x3c, 0xad, 0x9e, 0xb4, 0xf7, 0xac, 0xbf, 0xc1, 0x0c, 0xf9, 0x74, 0x3c, 0x81, 0x50, 0x4c,
+	0x52, 0xe7, 0x57, 0x8b, 0x74, 0x6a, 0x5e, 0x5d, 0x63, 0x27, 0x1a, 0xb2, 0x87, 0x96, 0xa9, 0xe0,
+	0x3a, 0x03, 0xc9, 0x21, 0x71, 0x7e, 0xb7, 0x48, 0xa7, 0xde, 0x6f, 0xd3, 0x1f, 0xbc, 0xd3, 0xb3,
+	0x4a, 0x39, 0x30, 0xe7, 0x2f, 0xbb, 0xc6, 0xfd, 0xdb, 0xc3, 0x01, 0xf1, 0x3e, 0xff, 0x6f, 0xdf,
+	0x58, 0xe6, 0x46, 0x62, 0xdb, 0x56, 0x4d, 0xfa, 0x11, 0x38, 0xa4, 0x45, 0x3a, 0xa6, 0xa7, 0x67,
+	0xfb, 0xdc, 0xfa, 0xcf, 0x51, 0x2a, 0x90, 0x2a, 0x53, 0xe3, 0x38, 0x0b, 0xa6, 0x50, 0x68, 0x53,
+	0xf5, 0x7e, 0x83, 0x96, 0x99, 0x68, 0x95, 0x89, 0x1e, 0xcb, 0x62, 0xe0, 0x3c, 0x3d, 0x76, 0x1b,
+	0xeb, 0xe8, 0x3c, 0x29, 0xe2, 0x14, 0xe9, 0x28, 0x0b, 0x86, 0x50, 0x78, 0xff, 0x36, 0x77, 0x46,
+	0xfa, 0xcc, 0x60, 0x34, 0x5f, 0xba, 0x64, 0xb1, 0x74, 0xc9, 0xeb, 0xd2, 0x25, 0x77, 0x2b, 0xd7,
+	0x58, 0xac, 0x5c, 0xe3, 0x79, 0xe5, 0x1a, 0x17, 0x47, 0x22, 0x4c, 0x27, 0x59, 0x40, 0x39, 0x46,
+	0x0c, 0x72, 0x95, 0xfa, 0x7c, 0xca, 0x20, 0xef, 0x96, 0x1d, 0xe2, 0x65, 0x36, 0x03, 0xf5, 0xad,
+	0x4b, 0x5d, 0x64, 0xf0, 0x47, 0x5b, 0x39, 0x7c, 0x0f, 0x00, 0x00, 0xff, 0xff, 0xf1, 0x1f, 0x90,
+	0x11, 0xf0, 0x01, 0x00, 0x00,
 }
 
-func (m *EvolveMigration) Marshal() (dAtA []byte, err error) {
+func (m *Migration) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -265,40 +185,16 @@ func (m *EvolveMigration) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *EvolveMigration) MarshalTo(dAtA []byte) (int, error) {
+func (m *Migration) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *EvolveMigration) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *Migration) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.StayOnComet {
-		i--
-		if m.StayOnComet {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x28
-	}
-	if len(m.Attesters) > 0 {
-		for iNdEx := len(m.Attesters) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Attesters[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintTypes(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x22
-		}
-	}
 	{
 		size, err := m.Sequencer.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -359,48 +255,6 @@ func (m *Sequencer) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *Attester) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *Attester) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *Attester) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if m.ConsensusPubkey != nil {
-		{
-			size, err := m.ConsensusPubkey.MarshalToSizedBuffer(dAtA[:i])
-			if err != nil {
-				return 0, err
-			}
-			i -= size
-			i = encodeVarintTypes(dAtA, i, uint64(size))
-		}
-		i--
-		dAtA[i] = 0x12
-	}
-	if len(m.Name) > 0 {
-		i -= len(m.Name)
-		copy(dAtA[i:], m.Name)
-		i = encodeVarintTypes(dAtA, i, uint64(len(m.Name)))
-		i--
-		dAtA[i] = 0xa
-	}
-	return len(dAtA) - i, nil
-}
-
 func encodeVarintTypes(dAtA []byte, offset int, v uint64) int {
 	offset -= sovTypes(v)
 	base := offset
@@ -412,7 +266,7 @@ func encodeVarintTypes(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func (m *EvolveMigration) Size() (n int) {
+func (m *Migration) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -423,36 +277,10 @@ func (m *EvolveMigration) Size() (n int) {
 	}
 	l = m.Sequencer.Size()
 	n += 1 + l + sovTypes(uint64(l))
-	if len(m.Attesters) > 0 {
-		for _, e := range m.Attesters {
-			l = e.Size()
-			n += 1 + l + sovTypes(uint64(l))
-		}
-	}
-	if m.StayOnComet {
-		n += 2
-	}
 	return n
 }
 
 func (m *Sequencer) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	l = len(m.Name)
-	if l > 0 {
-		n += 1 + l + sovTypes(uint64(l))
-	}
-	if m.ConsensusPubkey != nil {
-		l = m.ConsensusPubkey.Size()
-		n += 1 + l + sovTypes(uint64(l))
-	}
-	return n
-}
-
-func (m *Attester) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -475,7 +303,7 @@ func sovTypes(x uint64) (n int) {
 func sozTypes(x uint64) (n int) {
 	return sovTypes(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (m *EvolveMigration) Unmarshal(dAtA []byte) error {
+func (m *Migration) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -498,10 +326,10 @@ func (m *EvolveMigration) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: EvolveMigration: wiretype end group for non-group")
+			return fmt.Errorf("proto: Migration: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: EvolveMigration: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: Migration: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 2:
@@ -556,60 +384,6 @@ func (m *EvolveMigration) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Attesters", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Attesters = append(m.Attesters, Attester{})
-			if err := m.Attesters[len(m.Attesters)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StayOnComet", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.StayOnComet = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTypes(dAtA[iNdEx:])
@@ -658,124 +432,6 @@ func (m *Sequencer) Unmarshal(dAtA []byte) error {
 		}
 		if fieldNum <= 0 {
 			return fmt.Errorf("proto: Sequencer: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
-			}
-			var stringLen uint64
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + intStringLen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Name = string(dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field ConsensusPubkey", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTypes
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTypes
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if m.ConsensusPubkey == nil {
-				m.ConsensusPubkey = &types.Any{}
-			}
-			if err := m.ConsensusPubkey.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipTypes(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
-				return ErrInvalidLengthTypes
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *Attester) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowTypes
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: Attester: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Attester: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

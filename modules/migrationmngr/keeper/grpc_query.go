@@ -3,8 +3,6 @@ package keeper
 import (
 	"context"
 
-	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-
 	"github.com/evstack/ev-abci/modules/migrationmngr/types"
 )
 
