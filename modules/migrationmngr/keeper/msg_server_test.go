@@ -10,29 +10,29 @@ import (
 	"github.com/evstack/ev-abci/modules/migrationmngr/types"
 )
 
-func TestMigrateToEvolve_AuthorityError(t *testing.T) {
+func TestMigrate_AuthorityError(t *testing.T) {
 	s := initFixture(t)
-	msg := &types.MsgMigrateToEvolve{Authority: "bad"}
-	_, err := s.msgServer.MigrateToEvolve(s.ctx, msg)
+	msg := &types.MsgMigrate{Authority: "bad"}
+	_, err := s.msgServer.Migrate(s.ctx, msg)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid authority")
 }
 
-func TestMigrateToEvolve_BlockHeightError(t *testing.T) {
+func TestMigrate_BlockHeightError(t *testing.T) {
 	s := initFixture(t)
 	auth := sdk.AccAddress(address.Module(types.ModuleName)).String()
-	msg := &types.MsgMigrateToEvolve{Authority: auth, BlockHeight: 1}
+	msg := &types.MsgMigrate{Authority: auth, BlockHeight: 1}
 	s.ctx = s.ctx.WithBlockHeight(2)
-	_, err := s.msgServer.MigrateToEvolve(s.ctx, msg)
+	_, err := s.msgServer.Migrate(s.ctx, msg)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "block height")
 }
 
-func TestMigrateToEvolve_Success(t *testing.T) {
+func TestMigrate_Success(t *testing.T) {
 	s := initFixture(t)
 	auth := sdk.AccAddress(address.Module(types.ModuleName)).String()
-	msg := &types.MsgMigrateToEvolve{Authority: auth, BlockHeight: 10}
-	resp, err := s.msgServer.MigrateToEvolve(s.ctx, msg)
+	msg := &types.MsgMigrate{Authority: auth, BlockHeight: 10}
+	resp, err := s.msgServer.Migrate(s.ctx, msg)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 }

@@ -298,15 +298,13 @@ func (s *SingleValidatorSuite) submitSingleValidatorMigrationProposal(ctx contex
 	sequencerPubkey := s.getValidatorPubKey(ctx, conn, 0)
 
 	faucet := s.chain.GetFaucetWallet()
-	msg := &migrationmngrtypes.MsgMigrateToEvolve{
+	msg := &migrationmngrtypes.MsgMigrate{
 		Authority:   authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 		BlockHeight: migrateAt,
 		Sequencer: migrationmngrtypes.Sequencer{
 			Name:            "validator-0",
 			ConsensusPubkey: sequencerPubkey,
 		},
-		// stay on CometBFT instead of halting for rollup migration
-		StayOnComet: true,
 	}
 
 	propMsg, err := govv1.NewMsgSubmitProposal(

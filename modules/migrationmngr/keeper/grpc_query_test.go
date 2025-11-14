@@ -23,7 +23,7 @@ import (
 	"github.com/evstack/ev-abci/modules/migrationmngr/types"
 )
 
-// mockStakingKeeper is a minimal mock for stakingKeeper used in Attesters tests.
+// mockStakingKeeper is a minimal mock for stakingKeeper used in tests.
 type mockStakingKeeper struct {
 	vals        []stakingtypes.Validator
 	err         error
@@ -126,33 +126,11 @@ func initFixture(tb testing.TB) *fixture {
 	}
 }
 
-func TestAttesters_Success(t *testing.T) {
-	s := initFixture(t)
-
-	// attesters returns the current attesters
-	s.stakingKeeper.vals = []stakingtypes.Validator{{Description: stakingtypes.NewDescription("foo", "", "", "", "")}}
-	s.stakingKeeper.err = nil
-
-	resp, err := s.queryServer.Attesters(s.ctx, &types.QueryAttestersRequest{})
-	require.NoError(t, err)
-	require.Len(t, resp.Attesters, 1)
-	require.Equal(t, "foo", resp.Attesters[0].Name)
-}
-
-func TestAttesters_Error(t *testing.T) {
-	s := initFixture(t)
-
-	s.stakingKeeper.err = errors.New("fail")
-	resp, err := s.queryServer.Attesters(s.ctx, &types.QueryAttestersRequest{})
-	require.Error(t, err)
-	require.Nil(t, resp)
-}
-
 func TestIsMigrating(t *testing.T) {
 	s := initFixture(t)
 
 	// set up migration
-	require.NoError(t, s.keeper.Migration.Set(s.ctx, types.EvolveMigration{
+	require.NoError(t, s.keeper.Migration.Set(s.ctx, types.Migration{
 		BlockHeight: 1,
 		Sequencer:   types.Sequencer{Name: "foo"},
 	}))
@@ -187,7 +165,7 @@ func TestIsMigrating_IBCEnabled(t *testing.T) {
 	)
 
 	// set up migration
-	require.NoError(t, k.Migration.Set(ctx, types.EvolveMigration{
+	require.NoError(t, k.Migration.Set(ctx, types.Migration{
 		BlockHeight: 1,
 		Sequencer:   types.Sequencer{Name: "foo"},
 	}))
@@ -198,38 +176,4 @@ func TestIsMigrating_IBCEnabled(t *testing.T) {
 	require.True(t, resp.IsMigrating)
 	require.Equal(t, uint64(1), resp.StartBlockHeight)
 	require.Equal(t, 1+keeper.IBCSmoothingFactor, resp.EndBlockHeight)
-}
-
-func TestSequencer_Migrating(t *testing.T) {
-	s := initFixture(t)
-
-	// set up migration
-	require.NoError(t, s.keeper.Migration.Set(s.ctx, types.EvolveMigration{
-		BlockHeight: 1,
-		Sequencer:   types.Sequencer{Name: "foo"},
-	}))
-
-	resp, err := s.queryServer.Sequencer(s.ctx, &types.QuerySequencerRequest{})
-	require.Error(t, err)
-	require.Nil(t, resp)
-}
-
-func TestSequencer_Success(t *testing.T) {
-	s := initFixture(t)
-
-	// sequencer returns the current sequencer
-	seq := types.Sequencer{Name: "foo"}
-	require.NoError(t, s.keeper.Sequencer.Set(s.ctx, seq))
-
-	resp, err := s.queryServer.Sequencer(s.ctx, &types.QuerySequencerRequest{})
-	require.NoError(t, err)
-	require.Equal(t, seq, resp.Sequencer)
-}
-
-func TestSequencer_Error(t *testing.T) {
-	s := initFixture(t)
-
-	resp, err := s.queryServer.Sequencer(s.ctx, &types.QuerySequencerRequest{})
-	require.Error(t, err)
-	require.Nil(t, resp)
 }

@@ -10,19 +10,9 @@ option go_package = "github.com/evstack/ev-abci/modules/migrationmngr/types";
 
 // Query defines the gRPC querier service.
 service Query {
-  // IsMigrating queries the sequencer changes.
+  // IsMigrating queries whether a migration is in progress.
   rpc IsMigrating(QueryIsMigratingRequest) returns (QueryIsMigratingResponse) {
     option (google.api.http).get = "/evabci/migrationmngr/v1/is_migrating";
-  }
-
-  // Sequencer queries the sequencer.
-  rpc Sequencer(QuerySequencerRequest) returns (QuerySequencerResponse) {
-    option (google.api.http).get = "/evabci/migrationmngr/v1/sequencer";
-  }
-
-  // Attesters queries the list of attesters.
-  rpc Attesters(QueryAttestersRequest) returns (QueryAttestersResponse) {
-    option (google.api.http).get = "/evabci/migrationmngr/v1/attesters";
   }
 }
 
@@ -31,7 +21,7 @@ message QueryIsMigratingRequest {}
 
 // QueryIsMigratingResponse is response type for the Query/IsMigrating RPC method.
 message QueryIsMigratingResponse {
-  // is_migrating indicates whether the chain is migrating to Evolve.
+  // is_migrating indicates whether a migration is in progress.
   bool is_migrating = 1;
 
   // start_block_height is the block height at which the migration will start.
@@ -39,23 +29,4 @@ message QueryIsMigratingResponse {
 
   // end_block_height is the block height at which the migration will end.
   uint64 end_block_height = 3;
-}
-
-// QuerySequencerRequest is request type for the Query/Sequencer RPC method.
-message QuerySequencerRequest {}
-
-// QuerySequencerResponse is response type for the Query/Sequencer RPC method.
-message QuerySequencerResponse {
-  // sequencer is the requested sequencer.
-  Sequencer sequencer = 1 [(gogoproto.nullable) = false, (amino.dont_omitempty) = true];
-}
-
-// QueryAttestersRequest is request type for the Query/Attesters RPC method.
-message QueryAttestersRequest {}
-
-// QueryAttestersResponse is response type for the Query/Attesters RPC method.
-message QueryAttestersResponse {
-  // attesters is the list of attesters.
-  repeated Attester attesters = 1
-      [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
 }
