@@ -22,6 +22,10 @@ message EvolveMigration {
   // attesters is the list of attesters that will attest to blocks.
   repeated Attester attesters = 4
       [ (gogoproto.nullable) = false, (amino.dont_omitempty) = true ];
+
+  // stay_on_comet can be specified to prevent the chain from halting, and just switch out to
+  // a single validator.
+  bool stay_on_comet = 5;
 }
 
 // Sequencer defines a sequence of instructions to be executed.

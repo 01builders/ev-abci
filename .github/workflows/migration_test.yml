@@ -15,8 +15,8 @@ env:
   EVNODE_VERSION: "v1.0.0-beta.9"
   IGNITE_VERSION: "v29.6.1"
   IGNITE_EVOLVE_APP_VERSION: "main" # use tagged when apps has tagged (blocked on things)
-  EVOLVE_IMAGE_REPO: "ghcr.io/evstack/evolve-abci-gm"
-  COSMOS_SDK_IMAGE_REPO: "ghcr.io/evstack/cosmos-sdk-gm"
+  EVOLVE_IMAGE_REPO: "ghcr.io/01builders/evolve-abci-gm"
+  COSMOS_SDK_IMAGE_REPO: "ghcr.io/01builders/cosmos-sdk-gm"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -141,7 +141,7 @@ jobs:
           cache-to: type=gha,mode=max,ignore-error=true
 
   migration-tastora-single-node:
-    name: Test Migration from Cosmos SDK to Evolve
+    name: Test Migration from Cosmos SDK to Evolve (Single Node)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs:
@@ -223,3 +223,39 @@ jobs:
           EVOLVE_IMAGE_TAG: ${{ needs.determine-tag.outputs.image_tag }}-no-ibc
           COSMOS_SDK_IMAGE_REPO: ${{ env.COSMOS_SDK_IMAGE_REPO }}
           COSMOS_SDK_IMAGE_TAG: ${{ needs.determine-tag.outputs.image_tag }}-no-ibc
+
+  migration-stay-on-comet:
+    name: Test Migration To 1 Validator Staying on Comet
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+      - determine-tag
+      - docker-build-sdk-image # Only SDK image needed - staying on CometBFT, not migrating to Evolve
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: tests/integration/go.mod
+          cache: true
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image
+        run: docker pull ${{ env.COSMOS_SDK_IMAGE_REPO }}:${{ needs.determine-tag.outputs.image_tag }} # ibc-enabled
+
+      - name: Run Migration Test (Stay on Comet)
+        run: |
+          cd tests/integration
+          go test -v -run TestSingleValSuite/TestNTo1StayOnCometMigration -timeout 30m
+        env:
+          COSMOS_SDK_IMAGE_REPO: ${{ env.COSMOS_SDK_IMAGE_REPO }}
+          COSMOS_SDK_IMAGE_TAG: ${{ needs.determine-tag.outputs.image_tag }}

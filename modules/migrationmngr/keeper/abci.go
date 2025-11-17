@@ -38,6 +38,24 @@ func (k Keeper) PreBlock(ctx context.Context) (appmodule.ResponsePreBlock, error
 
 	// one block after the migration end, we halt forcing a binary switch
 	if shouldHalt {
+		migration, err := k.Migration.Get(ctx)
+		if err != nil {
+			k.Logger(ctx).Error("failed to get migration state", "error", err)
+			return nil, sdkerrors.ErrLogic.Wrapf("failed to get migration state: %v", err)
+		}
+
+		if migration.StayOnComet {
+			k.Logger(ctx).Info("Migration complete, staying on CometBFT")
+
+			// remove the migration state from the store
+			if err := k.Migration.Remove(ctx); err != nil {
+				k.Logger(ctx).Error("failed to remove migration state", "error", err)
+			}
+
+			// continue running on CometBFT - do not halt
+			return &sdk.ResponsePreBlock{}, nil
+		}
+
 		k.Logger(ctx).Info("HALTING CHAIN - migration complete, binary switch required")
 
 		// remove the migration state from the store
