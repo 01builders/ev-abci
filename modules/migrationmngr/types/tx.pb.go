@@ -31,36 +31,31 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-// MsgMigrateToEvolve is the Msg/MsgMigrateToEvolve request type.
-type MsgMigrateToEvolve struct {
+// MsgMigrate is the Msg/Migrate request type.
+type MsgMigrate struct {
 	// authority is the address that controls the module (defaults to x/gov unless
 	// overwritten).
 	Authority string `protobuf:"bytes,1,opt,name=authority,proto3" json:"authority,omitempty"`
-	// block height that trigger the Evolve migration.
+	// block height that triggers the migration.
 	// When IBC is enabled, the migration can take several blocks to complete.
 	// This is the block height at which the migration will be triggered.
 	BlockHeight uint64 `protobuf:"varint,2,opt,name=block_height,json=blockHeight,proto3" json:"block_height,omitempty"`
 	// sequencer is the pubkey that will become new sequencer.
 	Sequencer Sequencer `protobuf:"bytes,3,opt,name=sequencer,proto3" json:"sequencer"`
-	// attesters is the list of attesters that will attest to blocks.
-	Attesters []Attester `protobuf:"bytes,4,rep,name=attesters,proto3" json:"attesters"`
-	// stay_on_comet can be specified to prevent the chain from halting, and just switch out to
-	// a single validator.
-	StayOnComet bool `protobuf:"varint,5,opt,name=stay_on_comet,json=stayOnComet,proto3" json:"stay_on_comet,omitempty"`
 }
 
-func (m *MsgMigrateToEvolve) Reset()         { *m = MsgMigrateToEvolve{} }
-func (m *MsgMigrateToEvolve) String() string { return proto.CompactTextString(m) }
-func (*MsgMigrateToEvolve) ProtoMessage()    {}
-func (*MsgMigrateToEvolve) Descriptor() ([]byte, []int) {
+func (m *MsgMigrate) Reset()         { *m = MsgMigrate{} }
+func (m *MsgMigrate) String() string { return proto.CompactTextString(m) }
+func (*MsgMigrate) ProtoMessage()    {}
+func (*MsgMigrate) Descriptor() ([]byte, []int) {
 	return fileDescriptor_33fc897f55490d9b, []int{0}
 }
-func (m *MsgMigrateToEvolve) XXX_Unmarshal(b []byte) error {
+func (m *MsgMigrate) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *MsgMigrateToEvolve) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *MsgMigrate) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_MsgMigrateToEvolve.Marshal(b, m, deterministic)
+		return xxx_messageInfo_MsgMigrate.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -70,70 +65,56 @@ func (m *MsgMigrateToEvolve) XXX_Marshal(b []byte, deterministic bool) ([]byte, 
 		return b[:n], nil
 	}
 }
-func (m *MsgMigrateToEvolve) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_MsgMigrateToEvolve.Merge(m, src)
+func (m *MsgMigrate) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgMigrate.Merge(m, src)
 }
-func (m *MsgMigrateToEvolve) XXX_Size() int {
+func (m *MsgMigrate) XXX_Size() int {
 	return m.Size()
 }
-func (m *MsgMigrateToEvolve) XXX_DiscardUnknown() {
-	xxx_messageInfo_MsgMigrateToEvolve.DiscardUnknown(m)
+func (m *MsgMigrate) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgMigrate.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_MsgMigrateToEvolve proto.InternalMessageInfo
+var xxx_messageInfo_MsgMigrate proto.InternalMessageInfo
 
-func (m *MsgMigrateToEvolve) GetAuthority() string {
+func (m *MsgMigrate) GetAuthority() string {
 	if m != nil {
 		return m.Authority
 	}
 	return ""
 }
 
-func (m *MsgMigrateToEvolve) GetBlockHeight() uint64 {
+func (m *MsgMigrate) GetBlockHeight() uint64 {
 	if m != nil {
 		return m.BlockHeight
 	}
 	return 0
 }
 
-func (m *MsgMigrateToEvolve) GetSequencer() Sequencer {
+func (m *MsgMigrate) GetSequencer() Sequencer {
 	if m != nil {
 		return m.Sequencer
 	}
 	return Sequencer{}
 }
 
-func (m *MsgMigrateToEvolve) GetAttesters() []Attester {
-	if m != nil {
-		return m.Attesters
-	}
-	return nil
+// MsgMigrateResponse defines the response structure for executing a
+// MsgMigrate message.
+type MsgMigrateResponse struct {
 }
 
-func (m *MsgMigrateToEvolve) GetStayOnComet() bool {
-	if m != nil {
-		return m.StayOnComet
-	}
-	return false
-}
-
-// MsgMigrateToEvolveResponse defines the response structure for executing a
-// MsgMigrateToEvolve message.
-type MsgMigrateToEvolveResponse struct {
-}
-
-func (m *MsgMigrateToEvolveResponse) Reset()         { *m = MsgMigrateToEvolveResponse{} }
-func (m *MsgMigrateToEvolveResponse) String() string { return proto.CompactTextString(m) }
-func (*MsgMigrateToEvolveResponse) ProtoMessage()    {}
-func (*MsgMigrateToEvolveResponse) Descriptor() ([]byte, []int) {
+func (m *MsgMigrateResponse) Reset()         { *m = MsgMigrateResponse{} }
+func (m *MsgMigrateResponse) String() string { return proto.CompactTextString(m) }
+func (*MsgMigrateResponse) ProtoMessage()    {}
+func (*MsgMigrateResponse) Descriptor() ([]byte, []int) {
 	return fileDescriptor_33fc897f55490d9b, []int{1}
 }
-func (m *MsgMigrateToEvolveResponse) XXX_Unmarshal(b []byte) error {
+func (m *MsgMigrateResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *MsgMigrateToEvolveResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *MsgMigrateResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_MsgMigrateToEvolveResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_MsgMigrateResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -143,56 +124,52 @@ func (m *MsgMigrateToEvolveResponse) XXX_Marshal(b []byte, deterministic bool) (
 		return b[:n], nil
 	}
 }
-func (m *MsgMigrateToEvolveResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_MsgMigrateToEvolveResponse.Merge(m, src)
+func (m *MsgMigrateResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_MsgMigrateResponse.Merge(m, src)
 }
-func (m *MsgMigrateToEvolveResponse) XXX_Size() int {
+func (m *MsgMigrateResponse) XXX_Size() int {
 	return m.Size()
 }
-func (m *MsgMigrateToEvolveResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_MsgMigrateToEvolveResponse.DiscardUnknown(m)
+func (m *MsgMigrateResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_MsgMigrateResponse.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_MsgMigrateToEvolveResponse proto.InternalMessageInfo
+var xxx_messageInfo_MsgMigrateResponse proto.InternalMessageInfo
 
 func init() {
-	proto.RegisterType((*MsgMigrateToEvolve)(nil), "evabci.migrationmngr.v1.MsgMigrateToEvolve")
-	proto.RegisterType((*MsgMigrateToEvolveResponse)(nil), "evabci.migrationmngr.v1.MsgMigrateToEvolveResponse")
+	proto.RegisterType((*MsgMigrate)(nil), "evabci.migrationmngr.v1.MsgMigrate")
+	proto.RegisterType((*MsgMigrateResponse)(nil), "evabci.migrationmngr.v1.MsgMigrateResponse")
 }
 
 func init() { proto.RegisterFile("evabci/migrationmngr/v1/tx.proto", fileDescriptor_33fc897f55490d9b) }
 
 var fileDescriptor_33fc897f55490d9b = []byte{
-	// 454 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x94, 0x92, 0xcf, 0x8a, 0xd3, 0x50,
-	0x14, 0xc6, 0x7b, 0xa7, 0x33, 0x62, 0x6e, 0x15, 0x31, 0x0c, 0x4c, 0x0c, 0x12, 0x33, 0x9d, 0x4d,
-	0xa8, 0x4c, 0xc2, 0x74, 0xa0, 0x0b, 0x77, 0x53, 0x11, 0x44, 0x29, 0x4a, 0xc6, 0x95, 0x9b, 0x92,
-	0xa6, 0x87, 0xdb, 0x30, 0x4d, 0x4e, 0xbd, 0xe7, 0x36, 0xd8, 0x9d, 0xba, 0x74, 0xe5, 0x63, 0xb8,
-	0xec, 0xc2, 0x87, 0x98, 0xe5, 0xe0, 0xca, 0x95, 0x48, 0x2b, 0xf4, 0x35, 0x24, 0x7f, 0xc6, 0x32,
-	0x2d, 0x59, 0xcc, 0x26, 0xe4, 0x7e, 0xe7, 0x77, 0xce, 0xcd, 0xf9, 0xf2, 0x71, 0x1b, 0xd2, 0x60,
-	0x10, 0x46, 0x5e, 0x1c, 0x09, 0x19, 0xa8, 0x08, 0x93, 0x38, 0x11, 0xd2, 0x4b, 0x4f, 0x3c, 0xf5,
-	0xd1, 0x9d, 0x48, 0x54, 0xa8, 0x1f, 0x14, 0x84, 0x7b, 0x83, 0x70, 0xd3, 0x13, 0xf3, 0x61, 0x10,
-	0x47, 0x09, 0x7a, 0xf9, 0xb3, 0x60, 0xcd, 0x83, 0x10, 0x29, 0x46, 0xf2, 0x62, 0x12, 0xd9, 0x8c,
-	0x98, 0x44, 0x59, 0x78, 0x54, 0x14, 0xfa, 0xf9, 0xc9, 0x2b, 0x0e, 0x65, 0x69, 0x5f, 0xa0, 0xc0,
-	0x42, 0xcf, 0xde, 0x4a, 0xf5, 0xa8, 0xf2, 0xbb, 0x66, 0x13, 0x28, 0x5b, 0x9b, 0x7f, 0x77, 0xb8,
-	0xde, 0x23, 0xd1, 0xcb, 0x19, 0x78, 0x87, 0x2f, 0x52, 0x1c, 0xa7, 0xa0, 0x77, 0xb8, 0x16, 0x4c,
-	0xd5, 0x08, 0x65, 0xa4, 0x66, 0x06, 0xb3, 0x99, 0xa3, 0x75, 0x8d, 0x9f, 0x3f, 0x8e, 0xf7, 0xcb,
-	0x6b, 0xcf, 0x86, 0x43, 0x09, 0x44, 0xe7, 0x4a, 0x46, 0x89, 0xf0, 0xd7, 0xa8, 0x7e, 0xc8, 0xef,
-	0x0d, 0xc6, 0x18, 0x5e, 0xf4, 0x47, 0x10, 0x89, 0x91, 0x32, 0x76, 0x6c, 0xe6, 0xec, 0xfa, 0x8d,
-	0x5c, 0x7b, 0x99, 0x4b, 0xfa, 0x6b, 0xae, 0x11, 0x7c, 0x98, 0x42, 0x12, 0x82, 0x34, 0xea, 0x36,
-	0x73, 0x1a, 0xed, 0xa6, 0x5b, 0x61, 0x90, 0x7b, 0x7e, 0x4d, 0x76, 0xb5, 0xcb, 0xdf, 0x4f, 0x6a,
-	0xdf, 0x57, 0xf3, 0x16, 0xf3, 0xd7, 0xfd, 0xfa, 0x2b, 0xae, 0x05, 0x4a, 0x01, 0x29, 0x90, 0x64,
-	0xec, 0xda, 0x75, 0xa7, 0xd1, 0x3e, 0xac, 0x1c, 0x76, 0x56, 0x92, 0x37, 0x66, 0xfd, 0x6f, 0xd7,
-	0x9b, 0xfc, 0x3e, 0xa9, 0x60, 0xd6, 0xc7, 0xa4, 0x1f, 0x62, 0x0c, 0xca, 0xd8, 0xb3, 0x99, 0x73,
-	0xd7, 0x6f, 0x64, 0xe2, 0x9b, 0xe4, 0x79, 0x26, 0x3d, 0xeb, 0x7c, 0x59, 0xcd, 0x5b, 0xeb, 0x7d,
-	0xbf, 0xae, 0xe6, 0xad, 0xa3, 0x2d, 0x7f, 0xb7, 0xfd, 0x6c, 0x3e, 0xe6, 0xe6, 0xb6, 0xea, 0x03,
-	0x4d, 0x30, 0x21, 0x68, 0x7f, 0x66, 0xbc, 0xde, 0x23, 0xa1, 0x13, 0x7f, 0xb0, 0xf9, 0x23, 0x9e,
-	0x56, 0x6e, 0xb3, 0x3d, 0xcf, 0x3c, 0xbd, 0x05, 0x7c, 0x7d, 0xb9, 0xb9, 0xf7, 0x29, 0x33, 0xa2,
-	0xfb, 0xf6, 0x72, 0x61, 0xb1, 0xab, 0x85, 0xc5, 0xfe, 0x2c, 0x2c, 0xf6, 0x6d, 0x69, 0xd5, 0xae,
-	0x96, 0x56, 0xed, 0xd7, 0xd2, 0xaa, 0xbd, 0xef, 0x88, 0x48, 0x8d, 0xa6, 0x03, 0x37, 0xc4, 0xd8,
-	0x83, 0x94, 0x54, 0x10, 0x5e, 0x78, 0x90, 0x1e, 0x17, 0xd9, 0xc2, 0xe1, 0x74, 0x0c, 0xb4, 0x91,
-	0xb1, 0x3c, 0x60, 0x83, 0x3b, 0x79, 0xc2, 0x4e, 0xff, 0x05, 0x00, 0x00, 0xff, 0xff, 0x72, 0x0e,
-	0x7c, 0xc3, 0x20, 0x03, 0x00, 0x00,
+	// 388 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x91, 0x31, 0x4b, 0xf3, 0x40,
+	0x18, 0xc7, 0x73, 0x6f, 0xdf, 0xf7, 0x95, 0x5c, 0x5d, 0x0c, 0x85, 0xc6, 0x08, 0x31, 0xb6, 0x4b,
+	0xa9, 0x34, 0x47, 0x2b, 0x74, 0x70, 0xb3, 0x93, 0x20, 0x05, 0x49, 0x37, 0x1d, 0x4a, 0x92, 0x1e,
+	0x97, 0xa3, 0x4d, 0xae, 0xe6, 0x2e, 0xc1, 0x6e, 0xe2, 0xe8, 0xe4, 0xc7, 0x70, 0xec, 0xe0, 0x87,
+	0xe8, 0x58, 0x9c, 0x9c, 0x44, 0x5a, 0xa1, 0x5f, 0x43, 0x9a, 0xa4, 0x04, 0x95, 0x82, 0xcb, 0x71,
+	0xcf, 0xff, 0xf9, 0x3d, 0xf7, 0x3c, 0xcf, 0xfd, 0xa1, 0x81, 0x63, 0xdb, 0x71, 0x29, 0xf2, 0x29,
+	0x09, 0x6d, 0x41, 0x59, 0xe0, 0x07, 0x24, 0x44, 0x71, 0x13, 0x89, 0x5b, 0x73, 0x1c, 0x32, 0xc1,
+	0x94, 0x72, 0x4a, 0x98, 0x5f, 0x08, 0x33, 0x6e, 0x6a, 0x7b, 0xb6, 0x4f, 0x03, 0x86, 0x92, 0x33,
+	0x65, 0xb5, 0xb2, 0xcb, 0xb8, 0xcf, 0x38, 0xf2, 0x39, 0x59, 0xbf, 0xe1, 0x73, 0x92, 0x25, 0xf6,
+	0xd3, 0x44, 0x3f, 0x89, 0x50, 0x1a, 0x64, 0xa9, 0x12, 0x61, 0x84, 0xa5, 0xfa, 0xfa, 0x96, 0xa9,
+	0xd5, 0xad, 0x73, 0x4d, 0xc6, 0x38, 0x2b, 0xad, 0x7c, 0x00, 0x08, 0xbb, 0x9c, 0x74, 0x13, 0x06,
+	0x2b, 0x6d, 0x28, 0xdb, 0x91, 0xf0, 0x58, 0x48, 0xc5, 0x44, 0x05, 0x06, 0xa8, 0xc9, 0x1d, 0xf5,
+	0xe5, 0xb9, 0x51, 0xca, 0xda, 0x9d, 0x0d, 0x06, 0x21, 0xe6, 0xbc, 0x27, 0x42, 0x1a, 0x10, 0x2b,
+	0x47, 0x95, 0x23, 0xb8, 0xeb, 0x8c, 0x98, 0x3b, 0xec, 0x7b, 0x98, 0x12, 0x4f, 0xa8, 0x7f, 0x0c,
+	0x50, 0xfb, 0x6b, 0x15, 0x13, 0xed, 0x3c, 0x91, 0x94, 0x0b, 0x28, 0x73, 0x7c, 0x13, 0xe1, 0xc0,
+	0xc5, 0xa1, 0x5a, 0x30, 0x40, 0xad, 0xd8, 0xaa, 0x98, 0x5b, 0x3e, 0xc6, 0xec, 0x6d, 0xc8, 0x8e,
+	0x3c, 0x7b, 0x3b, 0x94, 0x9e, 0x56, 0xd3, 0x3a, 0xb0, 0xf2, 0xfa, 0x53, 0xf3, 0x7e, 0x35, 0xad,
+	0xe7, 0xfd, 0x1f, 0x56, 0xd3, 0xfa, 0xc1, 0x8f, 0x3d, 0xf3, 0xbd, 0x2a, 0x25, 0xa8, 0xe4, 0x91,
+	0x85, 0xf9, 0x98, 0x05, 0x1c, 0xb7, 0x28, 0x2c, 0x74, 0x39, 0x51, 0xae, 0xe1, 0xce, 0x66, 0xff,
+	0xea, 0xd6, 0x89, 0xf2, 0x72, 0xed, 0xf8, 0x17, 0xd0, 0xa6, 0x87, 0xf6, 0xef, 0x6e, 0x3d, 0x7b,
+	0xe7, 0x72, 0xb6, 0xd0, 0xc1, 0x7c, 0xa1, 0x83, 0xf7, 0x85, 0x0e, 0x1e, 0x97, 0xba, 0x34, 0x5f,
+	0xea, 0xd2, 0xeb, 0x52, 0x97, 0xae, 0xda, 0x84, 0x0a, 0x2f, 0x72, 0x4c, 0x97, 0xf9, 0x08, 0xc7,
+	0x5c, 0xd8, 0xee, 0x10, 0xe1, 0xb8, 0x91, 0x5a, 0xc7, 0x06, 0xd1, 0x08, 0xf3, 0x6f, 0x16, 0x26,
+	0xfe, 0x39, 0xff, 0x13, 0x03, 0x4f, 0x3e, 0x03, 0x00, 0x00, 0xff, 0xff, 0xe1, 0x0a, 0xf6, 0x6f,
+	0x7f, 0x02, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -207,8 +184,8 @@ const _ = grpc.SupportPackageIsVersion4
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
 type MsgClient interface {
-	// MigrateToEvolve defines a (governance) operation for the migration to Evolve. The authority defaults to the x/gov module account.
-	MigrateToEvolve(ctx context.Context, in *MsgMigrateToEvolve, opts ...grpc.CallOption) (*MsgMigrateToEvolveResponse, error)
+	// Migrate defines a (governance) operation for unbonding validators. The authority defaults to the x/gov module account.
+	Migrate(ctx context.Context, in *MsgMigrate, opts ...grpc.CallOption) (*MsgMigrateResponse, error)
 }
 
 type msgClient struct {
@@ -219,9 +196,9 @@ func NewMsgClient(cc grpc1.ClientConn) MsgClient {
 	return &msgClient{cc}
 }
 
-func (c *msgClient) MigrateToEvolve(ctx context.Context, in *MsgMigrateToEvolve, opts ...grpc.CallOption) (*MsgMigrateToEvolveResponse, error) {
-	out := new(MsgMigrateToEvolveResponse)
-	err := c.cc.Invoke(ctx, "/evabci.migrationmngr.v1.Msg/MigrateToEvolve", in, out, opts...)
+func (c *msgClient) Migrate(ctx context.Context, in *MsgMigrate, opts ...grpc.CallOption) (*MsgMigrateResponse, error) {
+	out := new(MsgMigrateResponse)
+	err := c.cc.Invoke(ctx, "/evabci.migrationmngr.v1.Msg/Migrate", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -230,36 +207,36 @@ func (c *msgClient) MigrateToEvolve(ctx context.Context, in *MsgMigrateToEvolve,
 
 // MsgServer is the server API for Msg service.
 type MsgServer interface {
-	// MigrateToEvolve defines a (governance) operation for the migration to Evolve. The authority defaults to the x/gov module account.
-	MigrateToEvolve(context.Context, *MsgMigrateToEvolve) (*MsgMigrateToEvolveResponse, error)
+	// Migrate defines a (governance) operation for unbonding validators. The authority defaults to the x/gov module account.
+	Migrate(context.Context, *MsgMigrate) (*MsgMigrateResponse, error)
 }
 
 // UnimplementedMsgServer can be embedded to have forward compatible implementations.
 type UnimplementedMsgServer struct {
 }
 
-func (*UnimplementedMsgServer) MigrateToEvolve(ctx context.Context, req *MsgMigrateToEvolve) (*MsgMigrateToEvolveResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method MigrateToEvolve not implemented")
+func (*UnimplementedMsgServer) Migrate(ctx context.Context, req *MsgMigrate) (*MsgMigrateResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Migrate not implemented")
 }
 
 func RegisterMsgServer(s grpc1.Server, srv MsgServer) {
 	s.RegisterService(&_Msg_serviceDesc, srv)
 }
 
-func _Msg_MigrateToEvolve_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(MsgMigrateToEvolve)
+func _Msg_Migrate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MsgMigrate)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(MsgServer).MigrateToEvolve(ctx, in)
+		return srv.(MsgServer).Migrate(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/evabci.migrationmngr.v1.Msg/MigrateToEvolve",
+		FullMethod: "/evabci.migrationmngr.v1.Msg/Migrate",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(MsgServer).MigrateToEvolve(ctx, req.(*MsgMigrateToEvolve))
+		return srv.(MsgServer).Migrate(ctx, req.(*MsgMigrate))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -270,15 +247,15 @@ var _Msg_serviceDesc = grpc.ServiceDesc{
 	HandlerType: (*MsgServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "MigrateToEvolve",
-			Handler:    _Msg_MigrateToEvolve_Handler,
+			MethodName: "Migrate",
+			Handler:    _Msg_Migrate_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "evabci/migrationmngr/v1/tx.proto",
 }
 
-func (m *MsgMigrateToEvolve) Marshal() (dAtA []byte, err error) {
+func (m *MsgMigrate) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -288,40 +265,16 @@ func (m *MsgMigrateToEvolve) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *MsgMigrateToEvolve) MarshalTo(dAtA []byte) (int, error) {
+func (m *MsgMigrate) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *MsgMigrateToEvolve) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *MsgMigrate) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if m.StayOnComet {
-		i--
-		if m.StayOnComet {
-			dAtA[i] = 1
-		} else {
-			dAtA[i] = 0
-		}
-		i--
-		dAtA[i] = 0x28
-	}
-	if len(m.Attesters) > 0 {
-		for iNdEx := len(m.Attesters) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Attesters[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintTx(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x22
-		}
-	}
 	{
 		size, err := m.Sequencer.MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
@@ -347,7 +300,7 @@ func (m *MsgMigrateToEvolve) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *MsgMigrateToEvolveResponse) Marshal() (dAtA []byte, err error) {
+func (m *MsgMigrateResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -357,12 +310,12 @@ func (m *MsgMigrateToEvolveResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *MsgMigrateToEvolveResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *MsgMigrateResponse) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *MsgMigrateToEvolveResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *MsgMigrateResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -381,7 +334,7 @@ func encodeVarintTx(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func (m *MsgMigrateToEvolve) Size() (n int) {
+func (m *MsgMigrate) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -396,19 +349,10 @@ func (m *MsgMigrateToEvolve) Size() (n int) {
 	}
 	l = m.Sequencer.Size()
 	n += 1 + l + sovTx(uint64(l))
-	if len(m.Attesters) > 0 {
-		for _, e := range m.Attesters {
-			l = e.Size()
-			n += 1 + l + sovTx(uint64(l))
-		}
-	}
-	if m.StayOnComet {
-		n += 2
-	}
 	return n
 }
 
-func (m *MsgMigrateToEvolveResponse) Size() (n int) {
+func (m *MsgMigrateResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -423,7 +367,7 @@ func sovTx(x uint64) (n int) {
 func sozTx(x uint64) (n int) {
 	return sovTx(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (m *MsgMigrateToEvolve) Unmarshal(dAtA []byte) error {
+func (m *MsgMigrate) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -446,10 +390,10 @@ func (m *MsgMigrateToEvolve) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MsgMigrateToEvolve: wiretype end group for non-group")
+			return fmt.Errorf("proto: MsgMigrate: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MsgMigrateToEvolve: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: MsgMigrate: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -536,60 +480,6 @@ func (m *MsgMigrateToEvolve) Unmarshal(dAtA []byte) error {
 				return err
 			}
 			iNdEx = postIndex
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Attesters", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTx
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthTx
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthTx
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Attesters = append(m.Attesters, Attester{})
-			if err := m.Attesters[len(m.Attesters)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 5:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StayOnComet", wireType)
-			}
-			var v int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowTx
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				v |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			m.StayOnComet = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipTx(dAtA[iNdEx:])
@@ -611,7 +501,7 @@ func (m *MsgMigrateToEvolve) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *MsgMigrateToEvolveResponse) Unmarshal(dAtA []byte) error {
+func (m *MsgMigrateResponse) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -634,10 +524,10 @@ func (m *MsgMigrateToEvolveResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: MsgMigrateToEvolveResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: MsgMigrateResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: MsgMigrateToEvolveResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: MsgMigrateResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		default:

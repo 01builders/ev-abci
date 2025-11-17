@@ -70,15 +70,15 @@ test: vet
 ## proto-gen: Generate protobuf files using buf
 proto-gen:
 	@echo "--> Generating protobuf files for modules"
-	@cd modules/proto && \
-		go tool github.com/bufbuild/buf/cmd/buf dep update
-	@cd modules/proto && \
-		go tool github.com/bufbuild/buf/cmd/buf generate
-	@mv modules/github.com/evstack/ev-abci/modules/migrationmngr/types/** modules/migrationmngr/types/ && \
-		mv modules/github.com/evstack/ev-abci/modules/migrationmngr/module/* modules/migrationmngr/module/ && \
-		mv modules/github.com/evstack/ev-abci/modules/network/types/** modules/network/types/ && \
-		mv modules/github.com/evstack/ev-abci/modules/network/module/v1/* modules/network/module/v1
-	@rm -r modules/github.com
+	@cd modules/proto && buf generate
+	@if [ -d "modules/github.com" ]; then \
+		cp -r modules/github.com/evstack/ev-abci/modules/migrationmngr/types/*.pb.go modules/migrationmngr/types/ && \
+		cp -r modules/github.com/evstack/ev-abci/modules/migrationmngr/module/*.pb.go modules/migrationmngr/module/ 2>/dev/null || true && \
+		cp -r modules/github.com/evstack/ev-abci/modules/network/types/*.pb.go modules/network/types/ && \
+		cp -r modules/github.com/evstack/ev-abci/modules/network/module/v1/*.pb.go modules/network/module/v1/ 2>/dev/null || true && \
+		rm -rf modules/github.com; \
+	fi
+	@echo "--> Protobuf generation complete"
 
 .PHONY: proto-gen
 

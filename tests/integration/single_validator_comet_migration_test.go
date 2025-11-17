@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/celestiaorg/tastora/framework/docker/container"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -298,15 +300,13 @@ func (s *SingleValidatorSuite) submitSingleValidatorMigrationProposal(ctx contex
 	sequencerPubkey := s.getValidatorPubKey(ctx, conn, 0)
 
 	faucet := s.chain.GetFaucetWallet()
-	msg := &migrationmngrtypes.MsgMigrateToEvolve{
+	msg := &migrationmngrtypes.MsgMigrate{
 		Authority:   authtypes.NewModuleAddress(govtypes.ModuleName).String(),
 		BlockHeight: migrateAt,
 		Sequencer: migrationmngrtypes.Sequencer{
 			Name:            "validator-0",
 			ConsensusPubkey: sequencerPubkey,
 		},
-		// stay on CometBFT instead of halting for rollup migration
-		StayOnComet: true,
 	}
 
 	propMsg, err := govv1.NewMsgSubmitProposal(
@@ -518,4 +518,18 @@ func (s *SingleValidatorSuite) validateIBCStatePreserved(ctx context.Context) {
 func (s *SingleValidatorSuite) calculateIBCDenom(portID, channelID, baseDenom string) string {
 	prefixedDenom := transfertypes.GetPrefixedDenom(portID, channelID, baseDenom)
 	return transfertypes.ParseDenomTrace(prefixedDenom).IBCDenom()
+}
+
+// getCosmosSDKAppContainer returns the cosmos-sdk container image
+func getCosmosSDKAppContainer() container.Image {
+	imageRepo := os.Getenv("COSMOS_SDK_IMAGE_REPO")
+	if imageRepo == "" {
+		imageRepo = "cosmos-gm"
+	}
+
+	imageTag := os.Getenv("COSMOS_SDK_IMAGE_TAG")
+	if imageTag == "" {
+		imageTag = "test"
+	}
+	return container.NewImage(imageRepo, imageTag, "10001:10001")
 }

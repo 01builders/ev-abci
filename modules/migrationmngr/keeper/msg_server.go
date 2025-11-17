@@ -16,12 +16,12 @@ type msgServer struct {
 	Keeper
 }
 
-// NewMsgServerImpl returns an implementation of sequencer MsgServer interface.
+// NewMsgServerImpl returns an implementation of MsgServer interface.
 func NewMsgServerImpl(keeper Keeper) types.MsgServer {
 	return &msgServer{Keeper: keeper}
 }
 
-func (m *msgServer) MigrateToEvolve(ctx context.Context, msg *types.MsgMigrateToEvolve) (*types.MsgMigrateToEvolveResponse, error) {
+func (m *msgServer) Migrate(ctx context.Context, msg *types.MsgMigrate) (*types.MsgMigrateResponse, error) {
 	if m.authority != msg.Authority {
 		return nil, govtypes.ErrInvalidSigner.Wrapf("invalid authority; expected %s, got %s", m.authority, msg.Authority)
 	}
@@ -31,16 +31,14 @@ func (m *msgServer) MigrateToEvolve(ctx context.Context, msg *types.MsgMigrateTo
 		return nil, sdkerrors.ErrInvalidRequest.Wrapf("block height %d must be greater than current block height %d", msg.BlockHeight, sdkCtx.BlockHeight())
 	}
 
-	s := types.EvolveMigration{
+	s := types.Migration{
 		BlockHeight: msg.BlockHeight,
 		Sequencer:   msg.Sequencer,
-		Attesters:   msg.Attesters,
-		StayOnComet: msg.StayOnComet,
 	}
 
 	if err := m.Migration.Set(ctx, s); err != nil {
 		return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to set migration state: %v", err)
 	}
 
-	return &types.MsgMigrateToEvolveResponse{}, nil
+	return &types.MsgMigrateResponse{}, nil
 }

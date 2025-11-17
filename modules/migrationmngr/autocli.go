@@ -13,19 +13,9 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 			Service: types.Query_serviceDesc.ServiceName,
 			RpcCommandOptions: []*autocliv1.RpcCommandOptions{
 				{
-					RpcMethod: "Attesters",
-					Use:       "attesters",
-					Short:     "Shows the current attesters",
-				},
-				{
-					RpcMethod: "Sequencer",
-					Use:       "sequencer",
-					Short:     "Shows the current sequencer",
-				},
-				{
 					RpcMethod: "IsMigrating",
 					Use:       "is_migrating",
-					Short:     "Shows whether the chain is migrating to evolve",
+					Short:     "Shows whether a migration is in progress",
 				},
 			},
 		},
@@ -33,7 +23,7 @@ func (am AppModule) AutoCLIOptions() *autocliv1.ModuleOptions {
 			Service: types.Msg_serviceDesc.ServiceName,
 			RpcCommandOptions: []*autocliv1.RpcCommandOptions{
 				{
-					RpcMethod:   "MigrateToEvolve",
+					RpcMethod:   "Migrate",
 					GovProposal: true,
 				},
 			},

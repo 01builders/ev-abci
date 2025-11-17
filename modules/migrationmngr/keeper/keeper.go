@@ -29,12 +29,11 @@ type Keeper struct {
 	stakingKeeper types.StakingKeeper
 
 	Schema        collections.Schema
-	Sequencer     collections.Item[types.Sequencer]
-	Migration     collections.Item[types.EvolveMigration]
+	Migration     collections.Item[types.Migration]
 	MigrationStep collections.Item[uint64]
 }
 
-// NewKeeper creates a new sequencer Keeper instance.
+// NewKeeper creates a new migration manager Keeper instance.
 func NewKeeper(
 	cdc codec.BinaryCodec,
 	storeService corestore.KVStoreService,
@@ -56,17 +55,11 @@ func NewKeeper(
 		addressCodec:  addressCodec,
 		stakingKeeper: stakingKeeper,
 		ibcStoreKey:   ibcStoreKey,
-		Sequencer: collections.NewItem(
-			sb,
-			types.SequencerKey,
-			"sequencer",
-			codec.CollValue[types.Sequencer](cdc),
-		),
 		Migration: collections.NewItem(
 			sb,
 			types.MigrationKey,
-			"evolve_migration",
-			codec.CollValue[types.EvolveMigration](cdc),
+			"migration",
+			codec.CollValue[types.Migration](cdc),
 		),
 		MigrationStep: collections.NewItem(
 			sb,
@@ -91,19 +84,19 @@ func (k Keeper) Logger(ctx context.Context) log.Logger {
 	return sdkCtx.Logger().With("module", "x/"+types.ModuleName)
 }
 
-// IsMigrating checks if the migration to Evolve is in progress.
-// It checks if the EvolveMigration item exists in the store.
-// And if it does, it verifies we are past the block height that started the migration.
+// IsMigrating checks if a migration is in progress.
+// it checks if the Migration item exists in the store.
+// and if it does, it verifies we are past the block height that started the migration.
 func (k Keeper) IsMigrating(ctx context.Context) (start, end uint64, ok bool) {
 	migration, err := k.Migration.Get(ctx)
 	if errors.Is(err, collections.ErrNotFound) {
 		return 0, 0, false
 	} else if err != nil {
-		k.Logger(ctx).Error("failed to get evolve migration state", "error", err)
+		k.Logger(ctx).Error("failed to get migration state", "error", err)
 		return 0, 0, false
 	}
 
-	// smoothen the migration over IBCSmoothingFactor blocks, in order to migrate the validator set to the sequencer or attesters network when IBC is enabled.
+	// smoothen the migration over IBCSmoothingFactor blocks when IBC is enabled.
 	migrationEndHeight := migration.BlockHeight + IBCSmoothingFactor
 
 	// If IBC is not enabled, the migration can be done in one block.
