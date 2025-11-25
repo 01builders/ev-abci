@@ -51,7 +51,9 @@ type SingleValidatorSuite struct {
 	ibcDenom           string
 	preMigrationIBCBal sdk.Coin
 
-	migrationHeight uint64
+    migrationHeight uint64
+    // number of validators on the primary chain at test start
+    initialValidators int
 }
 
 func TestSingleValSuite(t *testing.T) {
@@ -90,10 +92,12 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 	t.Run("create_chains", func(t *testing.T) {
 		var wg sync.WaitGroup
 		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			s.chain = s.createAndStartChain(ctx, 5, "gm-1")
-		}()
+            go func() {
+                defer wg.Done()
+                // start with 5 validators on the primary chain
+                s.initialValidators = 5
+                s.chain = s.createAndStartChain(ctx, s.initialValidators, "gm-1")
+            }()
 
 		go func() {
 			defer wg.Done()
@@ -400,19 +404,44 @@ func (s *SingleValidatorSuite) validateSingleValidatorSet(ctx context.Context) {
 	s.T().Logf("Bonded validators: %d", len(bondedResp.Validators))
 	s.Require().Len(bondedResp.Validators, 1, "should have exactly 1 bonded validator")
 
-	// check unbonding validators
-	unbondingResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
-		Status: stakingtypes.BondStatus_name[int32(stakingtypes.Unbonding)],
-	})
-	s.Require().NoError(err)
-	s.T().Logf("Unbonding validators: %d", len(unbondingResp.Validators))
+    // check unbonding validators
+    unbondingResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
+        Status: stakingtypes.BondStatus_name[int32(stakingtypes.Unbonding)],
+    })
+    s.Require().NoError(err)
+    s.T().Logf("Unbonding validators: %d", len(unbondingResp.Validators))
+    s.Require().Len(unbondingResp.Validators, 0, "no validators should be in unbonding state at completion")
 
-	// check unbonded validators
-	unbondedResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
-		Status: stakingtypes.BondStatus_name[int32(stakingtypes.Unbonded)],
-	})
-	s.Require().NoError(err)
-	s.T().Logf("Unbonded validators: %d", len(unbondedResp.Validators))
+    // check unbonded validators
+    unbondedResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
+        Status: stakingtypes.BondStatus_name[int32(stakingtypes.Unbonded)],
+    })
+    s.Require().NoError(err)
+    s.T().Logf("Unbonded validators: %d", len(unbondedResp.Validators))
+    if s.initialValidators > 0 {
+        s.Require().Equal(s.initialValidators-1, len(unbondedResp.Validators), "all non-sequencer validators should be unbonded")
+    }
+
+    // additionally assert that the remaining bonded validator (sequencer) has no delegations left
+    // find the operator address for validator 0
+    val0 := s.chain.GetNode()
+    stdout, stderr, err := val0.Exec(ctx, []string{
+        "gmd", "keys", "show", "--address", "validator",
+        "--home", val0.HomeDir(),
+        "--keyring-backend", "test",
+        "--bech", "val",
+    }, nil)
+    s.Require().NoError(err, "failed to get valoper address from node 0: %s", stderr)
+    val0Oper := string(bytes.TrimSpace(stdout))
+
+    // query delegations to the remaining validator; expect zero after finalization step
+    delResp, err := stakeQC.ValidatorDelegations(ctx, &stakingtypes.QueryValidatorDelegationsRequest{
+        ValidatorAddr: val0Oper,
+        Pagination:    nil,
+    })
+    s.Require().NoError(err)
+    s.T().Logf("Delegations to remaining validator: %d", len(delResp.DelegationResponses))
+    s.Require().Len(delResp.DelegationResponses, 0, "remaining validator should have zero delegations after final step")
 
 	s.T().Log("Validator set validated: 1 bonded validator")
 }
