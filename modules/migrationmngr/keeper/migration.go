@@ -197,8 +197,13 @@ func (k Keeper) migrateOver(
 	}
 
     if migrationData.StayOnComet {
-        // StayOnComet with IBC enabled: perform gradual undelegations for non-sequencers
-        // and on the final smoothing step set sequencer power to 1 and undelegate it.
+        // StayOnComet with IBC enabled: from the very first smoothing step, keep
+        // membership constant and reweight CometBFT powers so that the sequencer
+        // alone has >1/3 voting power. This removes timing sensitivity for IBC
+        // client updates. In parallel, undelegate non-sequencers gradually at the
+        // staking layer.
+
+        // Final step: set sequencer power=1 and undelegate sequencer
         if step+1 == IBCSmoothingFactor {
             k.Logger(ctx).Info("StayOnComet: finalization step, setting sequencer power=1 and undelegating sequencer")
 
@@ -238,8 +243,48 @@ func (k Keeper) migrateOver(
             return updates, nil
         }
 
-        // not final step: continue gradual unbonding of non-sequencers
-        return k.migrateOverWithUnbonding(ctx, migrationData, lastValidatorSet, step)
+        // Non-final steps: perform undelegation for a slice of non-sequencers,
+        // then emit reweighting updates for the full membership.
+        // 1) Unbond a chunk of non-sequencer validators on staking side
+        validatorsToRemove := getValidatorsToRemove(migrationData, lastValidatorSet)
+        if len(validatorsToRemove) > 0 {
+            removePerStep := (len(validatorsToRemove) + int(IBCSmoothingFactor) - 1) / int(IBCSmoothingFactor)
+            startRemove := int(step) * removePerStep
+            endRemove := min(startRemove+removePerStep, len(validatorsToRemove))
+            k.Logger(ctx).Info("StayOnComet: undelegating non-sequencers for step",
+                "step", step, "start_index", startRemove, "end_index", endRemove, "total_to_remove", len(validatorsToRemove))
+            for _, val := range validatorsToRemove[startRemove:endRemove] {
+                if err := k.unbondValidatorDelegations(ctx, val); err != nil {
+                    return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to undelegate: %v", err)
+                }
+            }
+        }
+
+        // 2) Emit reweighting updates: sequencer gets large power, others get 1
+        n := len(lastValidatorSet)
+        if n == 0 {
+            return []abci.ValidatorUpdate{}, nil
+        }
+        seqPower := int64(2 * n)
+        var updates []abci.ValidatorUpdate
+        for _, val := range lastValidatorSet {
+            pk, err := val.CmtConsPublicKey()
+            if err != nil {
+                return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to get validator pubkey: %v", err)
+            }
+            power := int64(1)
+            if val.ConsensusPubkey.Equal(migrationData.Sequencer.ConsensusPubkey) {
+                power = seqPower
+            }
+            updates = append(updates, abci.ValidatorUpdate{PubKey: pk, Power: power})
+        }
+
+        // advance smoothing step
+        if err := k.MigrationStep.Set(ctx, step+1); err != nil {
+            return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to set migration step: %v", err)
+        }
+
+        return updates, nil
     }
 
 	// rollup migration: build and return ABCI updates directly

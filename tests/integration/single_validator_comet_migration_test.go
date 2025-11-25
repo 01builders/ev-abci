@@ -396,31 +396,31 @@ func (s *SingleValidatorSuite) validateSingleValidatorSet(ctx context.Context) {
 
 	stakeQC := stakingtypes.NewQueryClient(conn)
 
-	// check bonded validators
-	bondedResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
-		Status: stakingtypes.BondStatus_name[int32(stakingtypes.Bonded)],
-	})
-	s.Require().NoError(err)
-	s.T().Logf("Bonded validators: %d", len(bondedResp.Validators))
-	s.Require().Len(bondedResp.Validators, 1, "should have exactly 1 bonded validator")
+    // staking bonded validators should be zero because all tokens are undelegated
+    bondedResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
+        Status: stakingtypes.BondStatus_name[int32(stakingtypes.Bonded)],
+    })
+    s.Require().NoError(err)
+    s.T().Logf("Bonded validators: %d", len(bondedResp.Validators))
+    s.Require().Len(bondedResp.Validators, 0, "staking should report zero bonded validators after finalization")
 
-    // check unbonding validators
+    // check unbonding validators: after undelegation, validators enter unbonding state
     unbondingResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
         Status: stakingtypes.BondStatus_name[int32(stakingtypes.Unbonding)],
     })
     s.Require().NoError(err)
     s.T().Logf("Unbonding validators: %d", len(unbondingResp.Validators))
-    s.Require().Len(unbondingResp.Validators, 0, "no validators should be in unbonding state at completion")
+    if s.initialValidators > 0 {
+        s.Require().Equal(s.initialValidators, len(unbondingResp.Validators), "all validators should be in unbonding state after finalization")
+    }
 
-    // check unbonded validators
+    // check unbonded validators: expect 0 since unbonding period has not elapsed
     unbondedResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
         Status: stakingtypes.BondStatus_name[int32(stakingtypes.Unbonded)],
     })
     s.Require().NoError(err)
     s.T().Logf("Unbonded validators: %d", len(unbondedResp.Validators))
-    if s.initialValidators > 0 {
-        s.Require().Equal(s.initialValidators-1, len(unbondedResp.Validators), "all non-sequencer validators should be unbonded")
-    }
+    s.Require().Len(unbondedResp.Validators, 0, "no validators should be fully unbonded yet")
 
     // additionally assert that the remaining bonded validator (sequencer) has no delegations left
     // find the operator address for validator 0
@@ -443,7 +443,15 @@ func (s *SingleValidatorSuite) validateSingleValidatorSet(ctx context.Context) {
     s.T().Logf("Delegations to remaining validator: %d", len(delResp.DelegationResponses))
     s.Require().Len(delResp.DelegationResponses, 0, "remaining validator should have zero delegations after final step")
 
-	s.T().Log("Validator set validated: 1 bonded validator")
+    // Also verify CometBFT validator set has exactly one validator with power=1
+    rpcClient, err := s.chain.GetNode().GetRPCClient()
+    s.Require().NoError(err)
+    vals, err := rpcClient.Validators(ctx, nil, nil, nil)
+    s.Require().NoError(err)
+    s.Require().Equal(1, len(vals.Validators), "CometBFT should have exactly 1 validator in the set")
+    s.Require().Equal(int64(1), vals.Validators[0].VotingPower, "CometBFT validator should have voting power 1")
+
+    s.T().Log("Validator set validated: staking has 0 bonded; CometBFT has 1 validator with power=1")
 }
 
 // validateChainProducesBlocks validates the chain continues to produce blocks
