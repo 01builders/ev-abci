@@ -14,7 +14,7 @@ import (
 )
 
 // IBCSmoothingFactor is the factor used to smooth the migration process when IBC is enabled. It determines how many blocks the migration will take.
-var IBCSmoothingFactor uint64 = 300
+var IBCSmoothingFactor uint64 = 30
 
 // migrateNow migrates the chain to evolve immediately.
 // this method is used when ibc is not enabled, so no migration smoothing is needed.
