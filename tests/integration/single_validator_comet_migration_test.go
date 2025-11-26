@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -39,7 +37,13 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-const FirstClientID = "07-tendermint-1"
+const (
+	// matches the variable of the same name in ev-abci.
+	IBCSmoothingWindow = 30
+	// firstClientID is the name of the first client that is generated. NOTE: for this test it is always the same
+	// as only a single client is being created on each chain.
+	firstClientID = "07-tendermint-1"
+)
 
 // SingleValidatorSuite tests migration from N validators to 1 validator on CometBFT
 type SingleValidatorSuite struct {
@@ -60,17 +64,10 @@ type SingleValidatorSuite struct {
 	// number of validators on the primary chain at test start
 	initialValidators int
 
-	// cancel function for background client update loop
-	relayerUpdateCancel context.CancelFunc
-
 	// last height on the primary chain (subject) for which we've
 	// successfully attempted a client update on the counterparty (host).
 	// Used to step updates height-by-height during migration.
 	lastUpdatedChainOnCounterparty int64
-
-	// Resolved client IDs tied to the IBC connection/channel
-	hostClientIDOnCounterparty string // client for gm-1 that lives on gm-2
-	hostClientIDOnChain        string // client for gm-2 that lives on gm-1
 }
 
 func TestSingleValSuite(t *testing.T) {
@@ -134,9 +131,6 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 		s.performIBCTransfers(ctx)
 	})
 
-	// We no longer run a background relayer update loop; instead we backfill
-	// client updates after the migration completes.
-
 	t.Run("submit_migration_proposal", func(t *testing.T) {
 		s.submitSingleValidatorMigrationProposal(ctx)
 	})
@@ -145,13 +139,12 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 		s.waitForMigrationCompletion(ctx)
 	})
 
-	// Optional: Backfill client updates after the upgrade window, stepping
-	// from the client's current trusted height up to the final migration
-	// height. This keeps gm-1's client on gm-2 up to date across the
-	// migration window without background updates.
+	// in order for IBC to function, we need to ensure that the light client on the counterparty
+	// has a client state for each height across the migration window.
+	// NOTE: this can be done AFTER the migration. We just need to make sure that we fill in every block.
 	t.Run("backfill_client_updates", func(t *testing.T) {
 		end := int64(s.migrationHeight + 30)
-		err := s.BackfillChainClientOnCounterpartyUntil(ctx, end)
+		err := s.backfillChainClientOnCounterpartyUntil(ctx, end)
 		s.Require().NoError(err)
 	})
 
@@ -161,20 +154,6 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 
 	t.Run("validate_chain_continues", func(t *testing.T) {
 		s.validateChainProducesBlocks(ctx)
-	})
-
-	// Emit detailed IBC debug information before final IBC preservation checks
-	t.Run("debug_ibc_state", func(t *testing.T) {
-		if err := s.dumpIBCDebug(ctx); err != nil {
-			s.T().Logf("dump IBC debug failed: %v", err)
-		}
-	})
-
-	// Stop the background relayer update loop
-	t.Run("stop_relayer_update_loop", func(t *testing.T) {
-		if s.relayerUpdateCancel != nil {
-			s.relayerUpdateCancel()
-		}
 	})
 
 	t.Run("validate_ibc_preserved", func(t *testing.T) {
@@ -264,15 +243,6 @@ func (s *SingleValidatorSuite) setupIBCConnection(ctx context.Context) {
 	s.Require().NoError(err)
 
 	s.T().Logf("IBC connection established: %s <-> %s", s.ibcConnection.ConnectionID, s.ibcConnection.CounterpartyID)
-
-	// Resolve and log the client IDs bound to the connection on both chains
-	hostClient, err := queryConnectionClientID(ctx, s.counterpartyChain, s.ibcConnection.ConnectionID)
-	s.Require().NoError(err)
-	counterpartyClient, err := queryConnectionClientID(ctx, s.chain, s.ibcConnection.CounterpartyID)
-	s.Require().NoError(err)
-	s.hostClientIDOnCounterparty = hostClient
-	s.hostClientIDOnChain = counterpartyClient
-	s.T().Logf("Resolved client IDs: gm-2 has client %s (for gm-1), gm-1 has client %s (for gm-2)", hostClient, counterpartyClient)
 }
 
 // performIBCTransfers performs IBC transfers to establish IBC state
@@ -334,87 +304,6 @@ func (s *SingleValidatorSuite) performIBCTransfers(ctx context.Context) {
 	s.T().Logf("IBC transfer complete: %s %s", ibcBalance.Amount, s.ibcDenom)
 }
 
-// startRelayerUpdateLoop starts a background goroutine that periodically
-// updates clients.
-func (s *SingleValidatorSuite) startRelayerUpdateLoop(parentCtx context.Context) {
-	// create cancellable context and remember cancel
-	ctx, cancel := context.WithCancel(parentCtx)
-	s.relayerUpdateCancel = cancel
-
-	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				// send a very small IBC transfer from counterparty -> primary chain
-				if s.counterpartyChain == nil || s.chain == nil {
-					continue
-				}
-
-				// Keep the gm-1 client on the counterparty (gm-2) up to date by
-				// stepping through each new height on the primary chain. This avoids
-				// large single-hop updates across validator set transitions.
-				if err := s.StepwiseUpdateChainClientOnCounterparty(ctx); err != nil {
-					s.T().Logf("Stepwise client update error: %v", err)
-				}
-			}
-		}
-	}()
-}
-
-/*
-// startRelayerUpdateLoop starts a background goroutine that periodically sends a
-// tiny IBC transfer to provoke Hermes to relay packets and submit client updates
-// during the migration window. This reduces timing sensitivity for anchoring.
-func (s *SingleValidatorSuite) startRelayerUpdateLoop(parentCtx context.Context) {
-	// create cancellable context and remember cancel
-	ctx, cancel := context.WithCancel(parentCtx)
-	s.relayerUpdateCancel = cancel
-
-	go func() {
-		ticker := time.NewTicker(2 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				// send a very small IBC transfer from counterparty -> primary chain
-				if s.counterpartyChain == nil || s.chain == nil {
-					continue
-				}
-
-				// wallets
-				ibcChainWallet := s.counterpartyChain.GetFaucetWallet()
-				gmWallet := s.chain.GetFaucetWallet()
-
-				// tiny amount to minimize noise
-				amount := math.NewInt(1)
-				msg := transfertypes.NewMsgTransfer(
-					s.ibcChannel.PortID,
-					s.ibcChannel.ChannelID,
-					sdk.NewCoin("stake", amount),
-					ibcChainWallet.GetFormattedAddress(),
-					gmWallet.GetFormattedAddress(),
-					clienttypes.ZeroHeight(),
-					uint64(time.Now().Add(30*time.Second).UnixNano()),
-					"",
-				)
-
-				// short timeout context per tx; ignore errors to keep loop resilient
-				txCtx, cancelTx := context.WithTimeout(ctx, 20*time.Second)
-				_, _ = s.counterpartyChain.BroadcastMessages(txCtx, ibcChainWallet, msg)
-				cancelTx()
-			}
-		}
-	}()
-}
-*/
 // submitSingleValidatorMigrationProposal submits a proposal to migrate to single validator
 func (s *SingleValidatorSuite) submitSingleValidatorMigrationProposal(ctx context.Context) {
 	s.T().Log("Submitting single validator migration proposal...")
@@ -430,7 +319,7 @@ func (s *SingleValidatorSuite) submitSingleValidatorMigrationProposal(ctx contex
 	s.Require().NoError(err)
 
 	// schedule migration 30 blocks in the future to allow governance
-	migrateAt := uint64(curHeight + 30)
+	migrateAt := uint64(curHeight + IBCSmoothingWindow)
 	s.migrationHeight = migrateAt
 	s.T().Logf("Current height: %d, Migration at: %d", curHeight, migrateAt)
 
@@ -499,8 +388,8 @@ func (s *SingleValidatorSuite) getValidatorPubKey(ctx context.Context, conn *grp
 func (s *SingleValidatorSuite) waitForMigrationCompletion(ctx context.Context) {
 	s.T().Log("Waiting for migration to complete...")
 
-	// migration should complete at migrationHeight + IBCSmoothingFactor (300 blocks)
-	targetHeight := int64(s.migrationHeight + 30)
+	// migration should complete at migrationHeight + IBCSmoothingFactor (30 blocks)
+	targetHeight := int64(s.migrationHeight + IBCSmoothingWindow)
 
 	err := wait.ForCondition(ctx, time.Hour, 10*time.Second, func() (bool, error) {
 		h, err := s.chain.Height(ctx)
@@ -702,77 +591,6 @@ func (s *SingleValidatorSuite) calculateIBCDenom(portID, channelID, baseDenom st
 	return transfertypes.ParseDenomTrace(prefixedDenom).IBCDenom()
 }
 
-// UpdateClients updates clients on both chains.
-// It is assumed there is only one client and uses the hard coded client ID that both will have.
-func (s *SingleValidatorSuite) UpdateClients(ctx context.Context, hermes *relayer.Hermes, chainA, chainB *cosmos.Chain) error {
-	if err := updateClient(ctx, hermes, chainA.GetChainID(), FirstClientID); err != nil {
-		return fmt.Errorf("failed to update client on chain %s: %w", chainA.GetChainID(), err)
-	}
-
-	if err := updateClient(ctx, hermes, chainB.GetChainID(), FirstClientID); err != nil {
-		return fmt.Errorf("failed to update client on chain %s: %w", chainB.GetChainID(), err)
-	}
-
-	return nil
-}
-
-// updateClient updates the specified client with the hostChainID and clientID.
-func updateClient(ctx context.Context, hermes *relayer.Hermes, hostChainID, clientID string) error {
-	cmd := []string{
-		"hermes", "--json", "update", "client",
-		"--host-chain", hostChainID,
-		"--client", clientID,
-	}
-	_, _, err := hermes.Exec(ctx, hermes.Logger, cmd, nil)
-	return err
-}
-
-// revisionNumberFromChainIDOrClient tries to extract the revision number from
-// the subject chain-id (e.g., "gm-1" -> 1). If parsing fails, it queries the
-// client state on the host chain and extracts latest_height.revision_number.
-func revisionNumberFromChainIDOrClient(ctx context.Context, subjectChainID string, host *cosmos.Chain, clientID string) (uint64, error) {
-	// Parse suffix from chain-id
-	re := regexp.MustCompile(`-(\d+)$`)
-	if m := re.FindStringSubmatch(subjectChainID); len(m) == 2 {
-		if n, err := strconv.ParseUint(m[1], 10, 64); err == nil {
-			return n, nil
-		}
-	}
-
-	networkInfo, err := host.GetNode().GetNetworkInfo(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get host node network info: %w", err)
-	}
-
-	// Fallback: query client state JSON on host chain
-	nodes := host.GetNodes()
-	if len(nodes) == 0 {
-		return 0, fmt.Errorf("no nodes for host chain")
-	}
-	node := nodes[0].(*cosmos.ChainNode)
-	stdout, stderr, err := node.Exec(ctx, []string{
-		"gmd", "q", "ibc", "client", "state", clientID, "-o", "json",
-		"--grpc-addr", networkInfo.External.GRPCAddress(), "--grpc-insecure", "--prove=false",
-	}, nil)
-	if err != nil {
-		return 0, fmt.Errorf("query client state failed: %s", stderr)
-	}
-	var resp struct {
-		ClientState struct {
-			LatestHeight struct {
-				RevisionNumber json.Number `json:"revision_number"`
-				RevisionHeight json.Number `json:"revision_height"`
-			} `json:"latest_height"`
-		} `json:"client_state"`
-	}
-	if err := json.Unmarshal(stdout, &resp); err == nil {
-		if rn, err := resp.ClientState.LatestHeight.RevisionNumber.Int64(); err == nil && rn >= 0 {
-			return uint64(rn), nil
-		}
-	}
-	return 0, fmt.Errorf("could not determine revision_number from client state JSON")
-}
-
 // queryClientRevisionHeight returns latest_height.revision_height for the client on the host chain.
 func queryClientRevisionHeight(ctx context.Context, host *cosmos.Chain, clientID string) (int64, error) {
 	nodes := host.GetNodes()
@@ -809,182 +627,10 @@ func queryClientRevisionHeight(ctx context.Context, host *cosmos.Chain, clientID
 	return 0, fmt.Errorf("could not parse client revision_height from host state JSON")
 }
 
-// queryConnectionClientID queries the IBC connection end and returns its client_id.
-func queryConnectionClientID(ctx context.Context, chain *cosmos.Chain, connectionID string) (string, error) {
-	node := chain.GetNode()
-	networkInfo, err := node.GetNetworkInfo(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to get network info: %w", err)
-	}
-	// Use internal gRPC address when querying from inside the node container.
-	var stdout, stderr []byte
-	// Simple retry in case the service or state is not immediately available.
-	var lastErr error
-	for attempt := 0; attempt < 3; attempt++ {
-		stdout, stderr, err = node.Exec(ctx, []string{
-			"gmd", "q", "ibc", "connection", "end", connectionID, "-o", "json",
-			"--grpc-addr", networkInfo.Internal.GRPCAddress(), "--grpc-insecure", "--prove=false",
-		}, nil)
-		if err == nil {
-			lastErr = nil
-			break
-		}
-		lastErr = fmt.Errorf("query connection end failed: %s", stderr)
-		// small delay before retrying
-		time.Sleep(300 * time.Millisecond)
-	}
-	if lastErr != nil {
-		return "", lastErr
-	}
-	var resp struct {
-		Connection struct {
-			ClientID string `json:"client_id"`
-		} `json:"connection"`
-	}
-	if err := json.Unmarshal(stdout, &resp); err != nil {
-		return "", fmt.Errorf("failed to decode connection end JSON: %w", err)
-	}
-	if resp.Connection.ClientID == "" {
-		return "", fmt.Errorf("empty client_id in connection end for %s", connectionID)
-	}
-	return resp.Connection.ClientID, nil
-}
-
-// dumpIBCDebug logs useful IBC-related state: chain heights, connection/channel IDs,
-// resolved client IDs and their latest heights/chain-ids on both chains.
-func (s *SingleValidatorSuite) dumpIBCDebug(ctx context.Context) error {
-	// Current chain heights
-	hA, err := s.chain.Height(ctx)
-	if err != nil {
-		return err
-	}
-	hB, err := s.counterpartyChain.Height(ctx)
-	if err != nil {
-		return err
-	}
-	s.T().Logf("Heights: %s=%d, %s=%d", s.chain.GetChainID(), hA, s.counterpartyChain.GetChainID(), hB)
-
-	// Connection and channel IDs
-	s.T().Logf("Connection IDs: A=%s, B=%s", s.ibcConnection.CounterpartyID, s.ibcConnection.ConnectionID)
-	s.T().Logf("Channel IDs: A=%s/%s, B=%s/%s", s.ibcChannel.CounterpartyPort, s.ibcChannel.CounterpartyID, s.ibcChannel.PortID, s.ibcChannel.ChannelID)
-
-	// Resolve client IDs from connections (reconfirm)
-	hostClientB, err := queryConnectionClientID(ctx, s.counterpartyChain, s.ibcConnection.ConnectionID)
-	if err != nil {
-		return err
-	}
-	hostClientA, err := queryConnectionClientID(ctx, s.chain, s.ibcConnection.CounterpartyID)
-	if err != nil {
-		return err
-	}
-	s.T().Logf("Client IDs: on %s (for %s) = %s; on %s (for %s) = %s",
-		s.counterpartyChain.GetChainID(), s.chain.GetChainID(), hostClientB,
-		s.chain.GetChainID(), s.counterpartyChain.GetChainID(), hostClientA)
-
-	// Query and log client states
-	ciB, err := queryClientInfo(ctx, s.counterpartyChain, hostClientB)
-	if err != nil {
-		return err
-	}
-	s.T().Logf("Client on %s tracking %s: latest_height=%d (rev=%d)", s.counterpartyChain.GetChainID(), ciB.TrackedChainID, ciB.RevisionHeight, ciB.RevisionNumber)
-
-	ciA, err := queryClientInfo(ctx, s.chain, hostClientA)
-	if err != nil {
-		return err
-	}
-	s.T().Logf("Client on %s tracking %s: latest_height=%d (rev=%d)", s.chain.GetChainID(), ciA.TrackedChainID, ciA.RevisionHeight, ciA.RevisionNumber)
-
-	return nil
-}
-
-type clientInfo struct {
-	TrackedChainID string
-	RevisionNumber uint64
-	RevisionHeight int64
-}
-
-// queryClientInfo returns chain-id and latest height for a client on a chain.
-func queryClientInfo(ctx context.Context, chain *cosmos.Chain, clientID string) (clientInfo, error) {
-	node := chain.GetNode()
-	networkInfo, err := node.GetNetworkInfo(ctx)
-	if err != nil {
-		return clientInfo{}, fmt.Errorf("failed to get network info: %w", err)
-	}
-	stdout, stderr, err := node.Exec(ctx, []string{
-		"gmd", "q", "ibc", "client", "state", clientID, "-o", "json",
-		"--grpc-addr", networkInfo.External.GRPCAddress(), "--grpc-insecure", "--prove=false",
-	}, nil)
-	if err != nil {
-		return clientInfo{}, fmt.Errorf("query client state failed: %s", stderr)
-	}
-	var resp struct {
-		ClientState struct {
-			ChainID      string `json:"chain_id"`
-			LatestHeight struct {
-				RevisionNumber json.Number `json:"revision_number"`
-				RevisionHeight json.Number `json:"revision_height"`
-			} `json:"latest_height"`
-		} `json:"client_state"`
-	}
-	if err := json.Unmarshal(stdout, &resp); err != nil {
-		return clientInfo{}, fmt.Errorf("failed to decode client state JSON: %w", err)
-	}
-	rn, _ := resp.ClientState.LatestHeight.RevisionNumber.Int64()
-	rh, _ := resp.ClientState.LatestHeight.RevisionHeight.Int64()
-	return clientInfo{
-		TrackedChainID: resp.ClientState.ChainID,
-		RevisionNumber: uint64(rn),
-		RevisionHeight: rh,
-	}, nil
-}
-
-// StepwiseUpdateChainClientOnCounterparty advances the gm-1 client that lives on
-// the counterparty chain (gm-2) one height at a time up to the current height
-// of gm-1. This helps cross validator-set transitions that would otherwise fail
-// a single-hop update due to insufficient overlap.
-func (s *SingleValidatorSuite) StepwiseUpdateChainClientOnCounterparty(ctx context.Context) error {
-	if s.chain == nil || s.counterpartyChain == nil || s.hermes == nil {
-		return nil
-	}
-
-	// Subject (client updates prove headers from this chain)
-	latest, err := s.chain.Height(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Start stepping from the next height after the last attempt
-	start := s.lastUpdatedChainOnCounterparty + 1
-	if start < 1 {
-		start = 1
-	}
-	if start > latest {
-		return nil
-	}
-
-	clientID := s.hostClientIDOnCounterparty
-	if clientID == "" {
-		return fmt.Errorf("host client ID on counterparty not resolved")
-	}
-	for h := start; h <= latest; h++ {
-		if err := updateClientAtHeight(s.T(), ctx, s.hermes, s.counterpartyChain, s.chain.GetChainID(), clientID, h); err != nil {
-			// Log and continue; the next iteration may still succeed if overlap permits
-			s.T().Logf("update client at height %d failed: %v", h, err)
-			// Do not advance the last updated marker on failure
-			continue
-		}
-		s.lastUpdatedChainOnCounterparty = h
-	}
-
-	return nil
-}
-
 // updateClientAtHeight updates the client by submitting a header for a specific
 // subject-chain height. Hermes expects a numeric height; for single-revision
 // test chains this is sufficient.
-func updateClientAtHeight(t *testing.T, ctx context.Context, hermes *relayer.Hermes, host *cosmos.Chain, subjectChainID, clientID string, height int64) error {
-	// Hermes v1.13.1 expects a plain numeric revision_height for --height.
-	// It derives the revision_number from chain context. Use bare height here.
+func updateClientAtHeight(ctx context.Context, hermes *relayer.Hermes, host *cosmos.Chain, clientID string, height int64) error {
 	hArg := fmt.Sprintf("%d", height)
 	cmd := []string{
 		"hermes", "--json", "update", "client",
@@ -992,30 +638,23 @@ func updateClientAtHeight(t *testing.T, ctx context.Context, hermes *relayer.Her
 		"--client", clientID,
 		"--height", hArg,
 	}
-	stdout, stderr, err := hermes.Exec(ctx, hermes.Logger, cmd, nil)
-	t.Logf("update client at height %s stdout: %s", hArg, stdout)
-	t.Logf("update client at height %s: stderr  %s", hArg, stderr)
+	_, _, err := hermes.Exec(ctx, hermes.Logger, cmd, nil)
 	return err
 }
 
-// BackfillChainClientOnCounterpartyFrom steps the client on the counterparty
-// from a specific starting height on the primary chain up to the current height.
-// BackfillChainClientOnCounterpartyUntil steps from the host client's current
+// backfillChainClientOnCounterpartyUntil steps from the host client's current
 // trusted height + 1 up to and including endHeight on the subject chain.
-func (s *SingleValidatorSuite) BackfillChainClientOnCounterpartyUntil(ctx context.Context, endHeight int64) error {
+func (s *SingleValidatorSuite) backfillChainClientOnCounterpartyUntil(ctx context.Context, endHeight int64) error {
 	if s.chain == nil || s.counterpartyChain == nil || s.hermes == nil {
 		return fmt.Errorf("missing chain(s) or hermes")
 	}
 
 	// Start from host client's current trusted height + 1 to ensure continuity.
-	clientID := s.hostClientIDOnCounterparty
-	if clientID == "" {
-		return fmt.Errorf("host client ID on counterparty not resolved")
-	}
-	trusted, err := queryClientRevisionHeight(ctx, s.counterpartyChain, clientID)
+	trusted, err := queryClientRevisionHeight(ctx, s.counterpartyChain, firstClientID)
 	if err != nil {
 		return err
 	}
+
 	// Always start from the client's current trusted height + 1 on the host chain
 	startHeight := trusted + 1
 	if startHeight < 1 {
@@ -1028,7 +667,7 @@ func (s *SingleValidatorSuite) BackfillChainClientOnCounterpartyUntil(ctx contex
 	}
 
 	for h := startHeight; h <= endHeight; h++ {
-		if err := updateClientAtHeight(s.T(), ctx, s.hermes, s.counterpartyChain, s.chain.GetChainID(), clientID, h); err != nil {
+		if err := updateClientAtHeight(ctx, s.hermes, s.counterpartyChain, firstClientID, h); err != nil {
 			s.T().Logf("backfill update at height %d failed: %v", h, err)
 			return err
 		}
