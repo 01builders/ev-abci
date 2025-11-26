@@ -39,7 +39,7 @@ import (
 
 const (
 	// matches the variable of the same name in ev-abci.
-	IBCSmoothingWindow = 30
+	IBCSmoothingFactor = 30
 	// firstClientID is the name of the first client that is generated. NOTE: for this test it is always the same
 	// as only a single client is being created on each chain.
 	firstClientID = "07-tendermint-1"
@@ -109,8 +109,7 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 		go func() {
 			defer wg.Done()
 			// start with 5 validators on the primary chain
-			s.initialValidators = 5
-			s.chain = s.createAndStartChain(ctx, s.initialValidators, "gm-1")
+			s.chain = s.createAndStartChain(ctx, 5, "gm-1")
 		}()
 
 		go func() {
@@ -125,8 +124,7 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 		s.setupIBCConnection(ctx)
 	})
 
-	// Establish initial IBC state and set s.ibcDenom before starting the
-	// background relayer update loop.
+	// Establish initial IBC state and capture s.ibcDenom and pre-migration balance.
 	t.Run("perform_ibc_transfers", func(t *testing.T) {
 		s.performIBCTransfers(ctx)
 	})
@@ -139,11 +137,12 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 		s.waitForMigrationCompletion(ctx)
 	})
 
-	// in order for IBC to function, we need to ensure that the light client on the counterparty
-	// has a client state for each height across the migration window.
-	// NOTE: this can be done AFTER the migration. We just need to make sure that we fill in every block.
+	// Ensure the light client on the counterparty has consensus states for
+	// every height across the migration window. This can be done AFTER the
+	// migration by backfilling one height at a time.
+	// The equivalent of this needs to be done for each counterparty.
 	t.Run("backfill_client_updates", func(t *testing.T) {
-		end := int64(s.migrationHeight + 30)
+		end := int64(s.migrationHeight + IBCSmoothingFactor)
 		err := s.backfillChainClientOnCounterpartyUntil(ctx, end)
 		s.Require().NoError(err)
 	})
@@ -319,7 +318,7 @@ func (s *SingleValidatorSuite) submitSingleValidatorMigrationProposal(ctx contex
 	s.Require().NoError(err)
 
 	// schedule migration 30 blocks in the future to allow governance
-	migrateAt := uint64(curHeight + IBCSmoothingWindow)
+	migrateAt := uint64(curHeight + IBCSmoothingFactor)
 	s.migrationHeight = migrateAt
 	s.T().Logf("Current height: %d, Migration at: %d", curHeight, migrateAt)
 
@@ -389,7 +388,7 @@ func (s *SingleValidatorSuite) waitForMigrationCompletion(ctx context.Context) {
 	s.T().Log("Waiting for migration to complete...")
 
 	// migration should complete at migrationHeight + IBCSmoothingFactor (30 blocks)
-	targetHeight := int64(s.migrationHeight + IBCSmoothingWindow)
+	targetHeight := int64(s.migrationHeight + IBCSmoothingFactor)
 
 	err := wait.ForCondition(ctx, time.Hour, 10*time.Second, func() (bool, error) {
 		h, err := s.chain.Height(ctx)
@@ -436,9 +435,7 @@ func (s *SingleValidatorSuite) validateSingleValidatorSet(ctx context.Context) {
 	})
 	s.Require().NoError(err)
 	s.T().Logf("Unbonding validators: %d", len(unbondingResp.Validators))
-	if s.initialValidators > 0 {
-		s.Require().Equal(s.initialValidators, len(unbondingResp.Validators), "all validators should be in unbonding state after finalization")
-	}
+	s.Require().Equal(len(s.chain.GetNodes()), len(unbondingResp.Validators), "all validators should be in unbonding state after finalization")
 
 	// check unbonded validators: expect 0 since unbonding period has not elapsed
 	unbondedResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
@@ -477,7 +474,7 @@ func (s *SingleValidatorSuite) validateSingleValidatorSet(ctx context.Context) {
 	s.Require().Equal(1, len(vals.Validators), "CometBFT should have exactly 1 validator in the set")
 	s.Require().Equal(int64(1), vals.Validators[0].VotingPower, "CometBFT validator should have voting power 1")
 
-	s.T().Log("Validator set validated: staking has 0 bonded; CometBFT has 1 validator with power=1")
+	s.T().Log("Validator set validated: staking has 0 bonded, CometBFT has 1 validator with power=1")
 }
 
 // validateChainProducesBlocks validates the chain continues to produce blocks
@@ -510,12 +507,10 @@ func (s *SingleValidatorSuite) validateIBCStatePreserved(ctx context.Context) {
 		gmWallet.GetFormattedAddress(),
 		s.ibcDenom)
 	s.Require().NoError(err)
-	// Background relayer update loop may have sent tiny transfers that adjust
-	// this balance slightly. Instead of strict equality, assert that balance
-	// has not decreased, and proceed to verify a round-trip transfer works.
-	s.Require().True(currentIBCBalance.Amount.GTE(s.preMigrationIBCBal.Amount),
-		"IBC balance should not be less than pre-migration balance")
-	s.T().Logf("IBC balance (>= pre-migration): %s %s (pre=%s)", currentIBCBalance.Amount, s.ibcDenom, s.preMigrationIBCBal.Amount)
+	// With no background transfers during migration, expect exact equality.
+	s.Require().Equal(s.preMigrationIBCBal.Amount, currentIBCBalance.Amount,
+		"IBC balance should equal pre-migration balance")
+	s.T().Logf("IBC balance (pre-migration): %s %s", currentIBCBalance.Amount, s.ibcDenom)
 
 	// perform IBC transfer back to verify IBC still works after migration
 	s.T().Log("Performing IBC transfer back to verify IBC functionality...")
@@ -523,7 +518,7 @@ func (s *SingleValidatorSuite) validateIBCStatePreserved(ctx context.Context) {
 	transferAmount := math.NewInt(100_000)
 	ibcChainWallet := s.counterpartyChain.GetFaucetWallet()
 
-	// give relayer a moment to drain any backlog from the background loop
+	// wait a few blocks to ensure relayer has synced recent heights
 	err = wait.ForBlocks(ctx, 3, s.counterpartyChain, s.chain)
 	s.Require().NoError(err)
 
