@@ -430,8 +430,8 @@ func (s *SingleValidatorSuite) getValidatorPubKey(ctx context.Context, conn *grp
 func (s *SingleValidatorSuite) waitForMigrationCompletion(ctx context.Context) {
 	s.T().Log("Waiting for migration to complete...")
 
-	// migration should complete at migrationHeight + IBCSmoothingFactor (30 blocks)
-	targetHeight := int64(s.migrationHeight + 30)
+	// migration should complete at migrationHeight + IBCSmoothingFactor (300 blocks)
+	targetHeight := int64(s.migrationHeight + 300)
 
 	err := wait.ForCondition(ctx, 5*time.Minute, 5*time.Second, func() (bool, error) {
 		h, err := s.chain.Height(ctx)
