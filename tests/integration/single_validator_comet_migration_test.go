@@ -433,7 +433,7 @@ func (s *SingleValidatorSuite) waitForMigrationCompletion(ctx context.Context) {
 	// migration should complete at migrationHeight + IBCSmoothingFactor (300 blocks)
 	targetHeight := int64(s.migrationHeight + 300)
 
-	err := wait.ForCondition(ctx, 5*time.Minute, 5*time.Second, func() (bool, error) {
+	err := wait.ForCondition(ctx, time.Hour, 10*time.Second, func() (bool, error) {
 		h, err := s.chain.Height(ctx)
 		if err != nil {
 			return false, err

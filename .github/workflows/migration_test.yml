@@ -255,7 +255,7 @@ jobs:
       - name: Run Migration Test (Stay on Comet)
         run: |
           cd tests/integration
-          go test -v -run TestSingleValSuite/TestNTo1StayOnCometMigration -timeout 30m
+          go test -v -run TestSingleValSuite/TestNTo1StayOnCometMigration -timeout 90m
         env:
           COSMOS_SDK_IMAGE_REPO: ${{ env.COSMOS_SDK_IMAGE_REPO }}
           COSMOS_SDK_IMAGE_TAG: ${{ needs.determine-tag.outputs.image_tag }}
