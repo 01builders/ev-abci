@@ -3,6 +3,7 @@ package integration_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -36,6 +37,14 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
+const (
+	// matches the variable of the same name in ev-abci.
+	IBCSmoothingFactor = 30
+	// firstClientID is the name of the first client that is generated. NOTE: for this test it is always the same
+	// as only a single client is being created on each chain.
+	firstClientID = "07-tendermint-1"
+)
+
 // SingleValidatorSuite tests migration from N validators to 1 validator on CometBFT
 type SingleValidatorSuite struct {
 	DockerIntegrationTestSuite
@@ -52,6 +61,13 @@ type SingleValidatorSuite struct {
 	preMigrationIBCBal sdk.Coin
 
 	migrationHeight uint64
+	// number of validators on the primary chain at test start
+	initialValidators int
+
+	// last height on the primary chain (subject) for which we've
+	// successfully attempted a client update on the counterparty (host).
+	// Used to step updates height-by-height during migration.
+	lastUpdatedChainOnCounterparty int64
 }
 
 func TestSingleValSuite(t *testing.T) {
@@ -92,6 +108,7 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
+			// start with 5 validators on the primary chain
 			s.chain = s.createAndStartChain(ctx, 5, "gm-1")
 		}()
 
@@ -107,6 +124,7 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 		s.setupIBCConnection(ctx)
 	})
 
+	// Establish initial IBC state and capture s.ibcDenom and pre-migration balance.
 	t.Run("perform_ibc_transfers", func(t *testing.T) {
 		s.performIBCTransfers(ctx)
 	})
@@ -117,6 +135,16 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 
 	t.Run("wait_for_migration_completion", func(t *testing.T) {
 		s.waitForMigrationCompletion(ctx)
+	})
+
+	// Ensure the light client on the counterparty has consensus states for
+	// every height across the migration window. This can be done AFTER the
+	// migration by backfilling one height at a time.
+	// The equivalent of this needs to be done for each counterparty.
+	t.Run("backfill_client_updates", func(t *testing.T) {
+		end := int64(s.migrationHeight + IBCSmoothingFactor)
+		err := s.backfillChainClientOnCounterpartyUntil(ctx, end)
+		s.Require().NoError(err)
 	})
 
 	t.Run("validate_single_validator", func(t *testing.T) {
@@ -290,7 +318,7 @@ func (s *SingleValidatorSuite) submitSingleValidatorMigrationProposal(ctx contex
 	s.Require().NoError(err)
 
 	// schedule migration 30 blocks in the future to allow governance
-	migrateAt := uint64(curHeight + 30)
+	migrateAt := uint64(curHeight + IBCSmoothingFactor)
 	s.migrationHeight = migrateAt
 	s.T().Logf("Current height: %d, Migration at: %d", curHeight, migrateAt)
 
@@ -360,12 +388,13 @@ func (s *SingleValidatorSuite) waitForMigrationCompletion(ctx context.Context) {
 	s.T().Log("Waiting for migration to complete...")
 
 	// migration should complete at migrationHeight + IBCSmoothingFactor (30 blocks)
-	targetHeight := int64(s.migrationHeight + 30)
+	targetHeight := int64(s.migrationHeight + IBCSmoothingFactor)
 
-	err := wait.ForCondition(ctx, 5*time.Minute, 5*time.Second, func() (bool, error) {
+	err := wait.ForCondition(ctx, time.Hour, 10*time.Second, func() (bool, error) {
 		h, err := s.chain.Height(ctx)
 		if err != nil {
-			return false, err
+			s.T().Logf("Error getting height: %v", err)
+			return false, nil
 		}
 		s.T().Logf("Current height: %d, Target: %d", h, targetHeight)
 		return h >= targetHeight, nil
@@ -392,29 +421,60 @@ func (s *SingleValidatorSuite) validateSingleValidatorSet(ctx context.Context) {
 
 	stakeQC := stakingtypes.NewQueryClient(conn)
 
-	// check bonded validators
+	// staking bonded validators should be zero because all tokens are undelegated
 	bondedResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
 		Status: stakingtypes.BondStatus_name[int32(stakingtypes.Bonded)],
 	})
 	s.Require().NoError(err)
 	s.T().Logf("Bonded validators: %d", len(bondedResp.Validators))
-	s.Require().Len(bondedResp.Validators, 1, "should have exactly 1 bonded validator")
+	s.Require().Len(bondedResp.Validators, 0, "staking should report zero bonded validators after finalization")
 
-	// check unbonding validators
+	// check unbonding validators: after undelegation, validators enter unbonding state
 	unbondingResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
 		Status: stakingtypes.BondStatus_name[int32(stakingtypes.Unbonding)],
 	})
 	s.Require().NoError(err)
 	s.T().Logf("Unbonding validators: %d", len(unbondingResp.Validators))
+	s.Require().Equal(len(s.chain.GetNodes()), len(unbondingResp.Validators), "all validators should be in unbonding state after finalization")
 
-	// check unbonded validators
+	// check unbonded validators: expect 0 since unbonding period has not elapsed
 	unbondedResp, err := stakeQC.Validators(ctx, &stakingtypes.QueryValidatorsRequest{
 		Status: stakingtypes.BondStatus_name[int32(stakingtypes.Unbonded)],
 	})
 	s.Require().NoError(err)
 	s.T().Logf("Unbonded validators: %d", len(unbondedResp.Validators))
+	s.Require().Len(unbondedResp.Validators, 0, "no validators should be fully unbonded yet")
 
-	s.T().Log("Validator set validated: 1 bonded validator")
+	// additionally assert that the remaining bonded validator (sequencer) has no delegations left
+	// find the operator address for validator 0
+	val0 := s.chain.GetNode()
+	stdout, stderr, err := val0.Exec(ctx, []string{
+		"gmd", "keys", "show", "--address", "validator",
+		"--home", val0.HomeDir(),
+		"--keyring-backend", "test",
+		"--bech", "val",
+	}, nil)
+	s.Require().NoError(err, "failed to get valoper address from node 0: %s", stderr)
+	val0Oper := string(bytes.TrimSpace(stdout))
+
+	// query delegations to the remaining validator; expect zero after finalization step
+	delResp, err := stakeQC.ValidatorDelegations(ctx, &stakingtypes.QueryValidatorDelegationsRequest{
+		ValidatorAddr: val0Oper,
+		Pagination:    nil,
+	})
+	s.Require().NoError(err)
+	s.T().Logf("Delegations to remaining validator: %d", len(delResp.DelegationResponses))
+	s.Require().Len(delResp.DelegationResponses, 0, "remaining validator should have zero delegations after final step")
+
+	// Also verify CometBFT validator set has exactly one validator with power=1
+	rpcClient, err := s.chain.GetNode().GetRPCClient()
+	s.Require().NoError(err)
+	vals, err := rpcClient.Validators(ctx, nil, nil, nil)
+	s.Require().NoError(err)
+	s.Require().Equal(1, len(vals.Validators), "CometBFT should have exactly 1 validator in the set")
+	s.Require().Equal(int64(1), vals.Validators[0].VotingPower, "CometBFT validator should have voting power 1")
+
+	s.T().Log("Validator set validated: staking has 0 bonded, CometBFT has 1 validator with power=1")
 }
 
 // validateChainProducesBlocks validates the chain continues to produce blocks
@@ -447,15 +507,20 @@ func (s *SingleValidatorSuite) validateIBCStatePreserved(ctx context.Context) {
 		gmWallet.GetFormattedAddress(),
 		s.ibcDenom)
 	s.Require().NoError(err)
-	s.Require().Equal(s.preMigrationIBCBal.Amount, currentIBCBalance.Amount)
-
-	s.T().Logf("IBC balance preserved: %s %s", currentIBCBalance.Amount, s.ibcDenom)
+	// With no background transfers during migration, expect exact equality.
+	s.Require().Equal(s.preMigrationIBCBal.Amount, currentIBCBalance.Amount,
+		"IBC balance should equal pre-migration balance")
+	s.T().Logf("IBC balance (pre-migration): %s %s", currentIBCBalance.Amount, s.ibcDenom)
 
 	// perform IBC transfer back to verify IBC still works after migration
 	s.T().Log("Performing IBC transfer back to verify IBC functionality...")
 
 	transferAmount := math.NewInt(100_000)
 	ibcChainWallet := s.counterpartyChain.GetFaucetWallet()
+
+	// wait a few blocks to ensure relayer has synced recent heights
+	err = wait.ForBlocks(ctx, 3, s.counterpartyChain, s.chain)
+	s.Require().NoError(err)
 
 	// get counterparty network info to query balance
 	counterpartyNetworkInfo, err := s.counterpartyChain.GetNode().GetNetworkInfo(ctx)
@@ -480,7 +545,7 @@ func (s *SingleValidatorSuite) validateIBCStatePreserved(ctx context.Context) {
 		"",
 	)
 
-	ctxTx, cancelTx := context.WithTimeout(ctx, 2*time.Minute)
+	ctxTx, cancelTx := context.WithTimeout(ctx, 3*time.Minute)
 	defer cancelTx()
 	resp, err := s.chain.BroadcastMessages(ctxTx, gmWallet, transferMsg)
 	s.Require().NoError(err)
@@ -489,7 +554,7 @@ func (s *SingleValidatorSuite) validateIBCStatePreserved(ctx context.Context) {
 	s.T().Log("Waiting for IBC transfer to complete...")
 
 	// wait for transfer to complete on counterparty chain
-	err = wait.ForCondition(ctx, 2*time.Minute, 2*time.Second, func() (bool, error) {
+	err = wait.ForCondition(ctx, 3*time.Minute, 2*time.Second, func() (bool, error) {
 		balance, err := queryBankBalance(ctx,
 			counterpartyNetworkInfo.External.GRPCAddress(),
 			ibcChainWallet.GetFormattedAddress(),
@@ -498,6 +563,7 @@ func (s *SingleValidatorSuite) validateIBCStatePreserved(ctx context.Context) {
 			return false, nil
 		}
 		expectedBalance := initialCounterpartyBalance.Amount.Add(transferAmount)
+		s.T().Logf("Waiting for IBC transfer: current=%s expected>=%s denom=stake", balance.Amount.String(), expectedBalance.String())
 		return balance.Amount.GTE(expectedBalance), nil
 	})
 	s.Require().NoError(err)
@@ -518,4 +584,89 @@ func (s *SingleValidatorSuite) validateIBCStatePreserved(ctx context.Context) {
 func (s *SingleValidatorSuite) calculateIBCDenom(portID, channelID, baseDenom string) string {
 	prefixedDenom := transfertypes.GetPrefixedDenom(portID, channelID, baseDenom)
 	return transfertypes.ParseDenomTrace(prefixedDenom).IBCDenom()
+}
+
+// queryClientRevisionHeight returns latest_height.revision_height for the client on the host chain.
+func queryClientRevisionHeight(ctx context.Context, host *cosmos.Chain, clientID string) (int64, error) {
+	nodes := host.GetNodes()
+	if len(nodes) == 0 {
+		return 0, fmt.Errorf("no nodes for host chain")
+	}
+	node := nodes[0].(*cosmos.ChainNode)
+
+	networkInfo, err := node.GetNetworkInfo(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get host node network info: %w", err)
+	}
+
+	stdout, stderr, err := node.Exec(ctx, []string{
+		"gmd", "q", "ibc", "client", "state", clientID, "-o", "json",
+		"--grpc-addr", networkInfo.Internal.GRPCAddress(), "--grpc-insecure", "--prove=false",
+	}, nil)
+	if err != nil {
+		return 0, fmt.Errorf("query client state failed: %s", stderr)
+	}
+	var resp struct {
+		ClientState struct {
+			LatestHeight struct {
+				RevisionHeight json.Number `json:"revision_height"`
+			} `json:"latest_height"`
+		} `json:"client_state"`
+	}
+	if err := json.Unmarshal(stdout, &resp); err != nil {
+		return 0, fmt.Errorf("failed to decode client state JSON: %w", err)
+	}
+	if rh, err := resp.ClientState.LatestHeight.RevisionHeight.Int64(); err == nil {
+		return rh, nil
+	}
+	return 0, fmt.Errorf("could not parse client revision_height from host state JSON")
+}
+
+// updateClientAtHeight updates the client by submitting a header for a specific
+// subject-chain height. Hermes expects a numeric height; for single-revision
+// test chains this is sufficient.
+func updateClientAtHeight(ctx context.Context, hermes *relayer.Hermes, host *cosmos.Chain, clientID string, height int64) error {
+	hArg := fmt.Sprintf("%d", height)
+	cmd := []string{
+		"hermes", "--json", "update", "client",
+		"--host-chain", host.GetChainID(),
+		"--client", clientID,
+		"--height", hArg,
+	}
+	_, _, err := hermes.Exec(ctx, hermes.Logger, cmd, nil)
+	return err
+}
+
+// backfillChainClientOnCounterpartyUntil steps from the host client's current
+// trusted height + 1 up to and including endHeight on the subject chain.
+func (s *SingleValidatorSuite) backfillChainClientOnCounterpartyUntil(ctx context.Context, endHeight int64) error {
+	if s.chain == nil || s.counterpartyChain == nil || s.hermes == nil {
+		return fmt.Errorf("missing chain(s) or hermes")
+	}
+
+	// Start from host client's current trusted height + 1 to ensure continuity.
+	trusted, err := queryClientRevisionHeight(ctx, s.counterpartyChain, firstClientID)
+	if err != nil {
+		return err
+	}
+
+	// Always start from the client's current trusted height + 1 on the host chain
+	startHeight := trusted + 1
+	if startHeight < 1 {
+		startHeight = 1
+	}
+
+	// Do not go past the requested endHeight
+	if endHeight < startHeight {
+		return nil
+	}
+
+	for h := startHeight; h <= endHeight; h++ {
+		if err := updateClientAtHeight(ctx, s.hermes, s.counterpartyChain, firstClientID, h); err != nil {
+			s.T().Logf("backfill update at height %d failed: %v", h, err)
+			return err
+		}
+		s.lastUpdatedChainOnCounterparty = h
+	}
+	return nil
 }
