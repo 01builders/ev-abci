@@ -23,6 +23,8 @@ help:
 	@echo "  make logs-a/b/c   - tail chain logs"
 	@echo "  make hermes-start - start Hermes only (after chains ready)"
 	@echo "  make ibc-setup    - fund relayer and create A<->B, A<->C channels"
+	@echo "  make ibc-transfer - send IBC transfer from gm-a to gm-b (can be called multiple times)"
+	@echo "  make ibc-transfer-verify - verify IBC transfer completed"
 	@echo "  make migrate      - submit StayOnComet migration on A (WINDOW=$(WINDOW))"
 	@echo "  make backfill MIG=<height> [WINDOW=$(WINDOW)] - run client backfill"
 	@echo "  make clean        - down and remove volumes"
@@ -80,6 +82,37 @@ hermes-start:
 .PHONY: ibc-setup
 ibc-setup:
 	bash ./ibc-setup.sh
+
+.PHONY: ibc-transfer
+ibc-transfer:
+	@echo "[ibc-transfer] Sending 1000000stake from gm-a to gm-b"
+	@docker exec -i gm-a-val-0 gmd tx ibc-transfer transfer transfer channel-0 \
+		$$(docker exec -i gm-b-val-0 gmd keys show faucet -a --keyring-backend test --home /home/gm/.gm) \
+		1000000stake \
+		--from faucet \
+		--keyring-backend test \
+		--chain-id gm-a \
+		--home /home/gm/.gm \
+		--yes \
+		--output json | jq -r '.txhash // "Transaction submitted"'
+
+.PHONY: ibc-transfer-verify
+ibc-transfer-verify:
+	@echo "[ibc-transfer-verify] Checking IBC balance on gm-b..."
+	@sleep 5
+	@IBC_DENOM=$$(docker exec -i gm-b-val-0 gmd query bank balances \
+		$$(docker exec -i gm-b-val-0 gmd keys show faucet -a --keyring-backend test --home /home/gm/.gm) \
+		--home /home/gm/.gm \
+		--output json 2>/dev/null | jq -r '.balances[] | select(.denom | startswith("ibc/")) | .denom' | head -1); \
+	if [ -n "$$IBC_DENOM" ]; then \
+		BALANCE=$$(docker exec -i gm-b-val-0 gmd query bank balances \
+			$$(docker exec -i gm-b-val-0 gmd keys show faucet -a --keyring-backend test --home /home/gm/.gm) \
+			--home /home/gm/.gm \
+			--output json 2>/dev/null | jq -r ".balances[] | select(.denom == \"$$IBC_DENOM\") | .amount"); \
+		echo "[ibc-transfer-verify] ✓ IBC balance: $$BALANCE $$IBC_DENOM"; \
+	else \
+		echo "[ibc-transfer-verify] ✗ No IBC tokens found yet"; \
+	fi
 
 .PHONY: migrate
 migrate:

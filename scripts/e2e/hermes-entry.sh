@@ -91,17 +91,13 @@ echo "[hermes] creating IBC connections/channels"
 # A <-> B
 hermes --config "$CONFIG" create connection --a-chain gm-a --b-chain gm-b || true
 hermes --config "$CONFIG" create channel \
-  --a-chain gm-a --b-chain gm-b \
-  --a-port transfer --b-port transfer \
-  --order unordered --channel-version ics20-1 \
-  --new-client-connection || true
+  --a-chain gm-a --a-connection connection-0 \
+  --a-port transfer --b-port transfer
 # A <-> C
 hermes --config "$CONFIG" create connection --a-chain gm-a --b-chain gm-c || true
 hermes --config "$CONFIG" create channel \
-  --a-chain gm-a --b-chain gm-c \
-  --a-port transfer --b-port transfer \
-  --order unordered --channel-version ics20-1 \
-  --new-client-connection || true
+  --a-chain gm-a --a-connection connection-1 \
+  --a-port transfer --b-port transfer
 
 echo "[hermes] starting relayer"
 exec hermes --config "$CONFIG" start
