@@ -1,0 +1,125 @@
+version: "3.8"
+
+services:
+  gm-a-val-0:
+    image: cosmos-gm:test
+    container_name: gm-a-val-0
+    entrypoint: ["/bin/sh", "/scripts/chain-entry.sh"]
+    volumes:
+      - gm_a_val0:/home/gm/.gm
+      - ./:/scripts:ro
+    networks: [gmnet]
+    user: "0:0"
+    ports:
+      - "26657:26657"  # RPC
+      - "9090:9090"    # gRPC
+    environment:
+      - CHAIN_ID=gm-a
+      - RPC_PORT=26657
+      - GRPC_PORT=9090
+    healthcheck:
+      test: ["CMD-SHELL", "gmd status 2>/dev/null | tr -d '\n' | grep -q '\"latest_block_height\":\"[1-9]' "]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  gm-a-val-1:
+    image: cosmos-gm:test
+    container_name: gm-a-val-1
+    entrypoint: ["/bin/sh", "/scripts/chain-entry.sh"]
+    volumes:
+      - gm_a_val1:/home/gm/.gm
+      - ./:/scripts:ro
+    networks: [gmnet]
+    user: "0:0"
+    environment:
+      - CHAIN_ID=gm-a
+      - RPC_PORT=26657
+      - GRPC_PORT=9090
+
+  gm-a-val-2:
+    image: cosmos-gm:test
+    container_name: gm-a-val-2
+    entrypoint: ["/bin/sh", "/scripts/chain-entry.sh"]
+    volumes:
+      - gm_a_val2:/home/gm/.gm
+      - ./:/scripts:ro
+    networks: [gmnet]
+    user: "0:0"
+    environment:
+      - CHAIN_ID=gm-a
+      - RPC_PORT=26657
+      - GRPC_PORT=9090
+
+  gm-b-val-0:
+    image: cosmos-gm:test
+    container_name: gm-b-val-0
+    entrypoint: ["/bin/sh", "/scripts/chain-entry.sh"]
+    volumes:
+      - gm_b_val0:/home/gm/.gm
+      - ./:/scripts:ro
+    networks: [gmnet]
+    user: "0:0"
+    ports:
+      - "27657:26657"
+      - "9190:9090"
+    environment:
+      - CHAIN_ID=gm-b
+      - RPC_PORT=26657
+      - GRPC_PORT=9090
+    healthcheck:
+      test: ["CMD-SHELL", "gmd status 2>/dev/null | tr -d '\n' | grep -q '\"latest_block_height\":\"[1-9]' "]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  gm-c-val-0:
+    image: cosmos-gm:test
+    container_name: gm-c-val-0
+    entrypoint: ["/bin/sh", "/scripts/chain-entry.sh"]
+    volumes:
+      - gm_c_val0:/home/gm/.gm
+      - ./:/scripts:ro
+    networks: [gmnet]
+    user: "0:0"
+    ports:
+      - "28657:26657"
+      - "9290:9090"
+    environment:
+      - CHAIN_ID=gm-c
+      - RPC_PORT=26657
+      - GRPC_PORT=9090
+    healthcheck:
+      test: ["CMD-SHELL", "gmd status 2>/dev/null | tr -d '\n' | grep -q '\"latest_block_height\":\"[1-9]' "]
+      interval: 2s
+      timeout: 2s
+      retries: 60
+
+  hermes:
+    image: ghcr.io/informalsystems/hermes:1.13.1
+    container_name: hermes
+    entrypoint: ["/bin/sh", "/scripts/hermes-entry.sh"]
+    volumes:
+      - hermes_home:/home/hermes/.hermes
+      - ./:/scripts:ro
+    networks: [gmnet]
+    depends_on:
+      gm-a-val-0:
+        condition: service_healthy
+      gm-b-val-0:
+        condition: service_healthy
+      gm-c-val-0:
+        condition: service_healthy
+    restart: unless-stopped
+    user: "0:0"
+
+networks:
+  gmnet: {}
+
+volumes:
+  gm_a_val0: {}
+  gm_a_val1: {}
+  gm_a_val2: {}
+  gm_b_val0: {}
+  gm_c_val0: {}
+  hermes_home: {}
