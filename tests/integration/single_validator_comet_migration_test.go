@@ -3,7 +3,6 @@ package integration_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"sync"
 	"testing"
@@ -138,6 +137,10 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 
 	t.Run("validate_single_validator", func(t *testing.T) {
 		s.validateSingleValidatorSet(ctx)
+	})
+
+	t.Run("remove_old_validators", func(t *testing.T) {
+		s.removeOldValidators(ctx)
 	})
 
 	t.Run("validate_chain_continues", func(t *testing.T) {
@@ -470,6 +473,25 @@ func (s *SingleValidatorSuite) validateSingleValidatorSet(ctx context.Context) {
 	s.T().Log("Validator set validated: staking has 0 bonded, CometBFT has 1 validator with power=1")
 }
 
+// removeOldValidators removes all validator containers except the first one
+func (s *SingleValidatorSuite) removeOldValidators(ctx context.Context) {
+	s.T().Log("Removing old validator containers...")
+
+	nodes := s.chain.GetNodes()
+	s.Require().Greater(len(nodes), 1, "expected multiple validators to remove")
+
+	// remove all validators except the first one (index 0)
+	for i := 1; i < len(nodes); i++ {
+		node := nodes[i].(*cosmos.ChainNode)
+		s.T().Logf("Stopping and removing node %d", i)
+
+		err := node.Remove(ctx)
+		s.Require().NoError(err, "failed to remove container for node %d", i)
+	}
+
+	s.T().Logf("Removed %d old validator containers", len(nodes)-1)
+}
+
 // validateChainProducesBlocks validates the chain continues to produce blocks
 func (s *SingleValidatorSuite) validateChainProducesBlocks(ctx context.Context) {
 	s.T().Log("Validating chain produces blocks...")
@@ -477,7 +499,7 @@ func (s *SingleValidatorSuite) validateChainProducesBlocks(ctx context.Context) 
 	initialHeight, err := s.chain.Height(ctx)
 	s.Require().NoError(err)
 
-	err = wait.ForBlocks(ctx, 5, s.chain)
+	err = wait.ForBlocks(ctx, 10, s.chain)
 	s.Require().NoError(err)
 
 	finalHeight, err := s.chain.Height(ctx)
@@ -577,42 +599,6 @@ func (s *SingleValidatorSuite) validateIBCStatePreserved(ctx context.Context) {
 func (s *SingleValidatorSuite) calculateIBCDenom(portID, channelID, baseDenom string) string {
 	prefixedDenom := transfertypes.GetPrefixedDenom(portID, channelID, baseDenom)
 	return transfertypes.ParseDenomTrace(prefixedDenom).IBCDenom()
-}
-
-// queryClientRevisionHeight returns latest_height.revision_height for the client on the host chain.
-func queryClientRevisionHeight(ctx context.Context, host *cosmos.Chain, clientID string) (int64, error) {
-	nodes := host.GetNodes()
-	if len(nodes) == 0 {
-		return 0, fmt.Errorf("no nodes for host chain")
-	}
-	node := nodes[0].(*cosmos.ChainNode)
-
-	networkInfo, err := node.GetNetworkInfo(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get host node network info: %w", err)
-	}
-
-	stdout, stderr, err := node.Exec(ctx, []string{
-		"gmd", "q", "ibc", "client", "state", clientID, "-o", "json",
-		"--grpc-addr", networkInfo.Internal.GRPCAddress(), "--grpc-insecure", "--prove=false",
-	}, nil)
-	if err != nil {
-		return 0, fmt.Errorf("query client state failed: %s", stderr)
-	}
-	var resp struct {
-		ClientState struct {
-			LatestHeight struct {
-				RevisionHeight json.Number `json:"revision_height"`
-			} `json:"latest_height"`
-		} `json:"client_state"`
-	}
-	if err := json.Unmarshal(stdout, &resp); err != nil {
-		return 0, fmt.Errorf("failed to decode client state JSON: %w", err)
-	}
-	if rh, err := resp.ClientState.LatestHeight.RevisionHeight.Int64(); err == nil {
-		return rh, nil
-	}
-	return 0, fmt.Errorf("could not parse client revision_height from host state JSON")
 }
 
 // updateClientAtHeight updates the client by submitting a header for a specific
