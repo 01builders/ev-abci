@@ -2,9 +2,7 @@ package keeper
 
 import (
 	"context"
-	"errors"
 
-	"cosmossdk.io/collections"
 	abci "github.com/cometbft/cometbft/abci/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
@@ -33,7 +31,7 @@ func (k Keeper) migrateNow(
 	if migrationData.StayOnComet {
 		// StayOnComet (IBC disabled): fully undelegate all validators' tokens and
 		// explicitly set the final CometBFT validator set to a single validator with power=1.
-		k.Logger(ctx).Info("StayOnComet: immediate undelegation and explicit valset update (IBC disabled)")
+		k.Logger(ctx).Info("StayOnComet: immediate undelegation and explicit valset update")
 
 		// unbond all validator delegations
 		for _, val := range lastValidatorSet {
@@ -145,199 +143,6 @@ func migrateToAttesters(
 			Power:  1,
 		}
 		initialValUpdates = append(initialValUpdates, attesterUpdate)
-	}
-
-	return initialValUpdates, nil
-}
-
-// migrateOver migrates the chain to evolve over a period of blocks.
-// this is to ensure ibc light client verification keep working while changing the whole validator set.
-// the migration step is tracked in store.
-// If StayOnComet is true, delegations are unbonded gradually and empty updates returned.
-// Otherwise, ABCI ValidatorUpdates are returned directly for rollup migration.
-func (k Keeper) migrateOver(
-	ctx context.Context,
-	migrationData types.EvolveMigration,
-	lastValidatorSet []stakingtypes.Validator,
-) (initialValUpdates []abci.ValidatorUpdate, err error) {
-	step, err := k.MigrationStep.Get(ctx)
-	if err != nil && !errors.Is(err, collections.ErrNotFound) {
-		return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to get migration step: %v", err)
-	}
-
-	if step >= IBCSmoothingFactor {
-		// migration complete
-		if err := k.MigrationStep.Remove(ctx); err != nil {
-			return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to remove migration step: %v", err)
-		}
-
-		if migrationData.StayOnComet {
-			// unbonding was already completed gradually over previous blocks, just return empty updates
-			k.Logger(ctx).Info("Migration complete, all validators unbonded gradually")
-			return []abci.ValidatorUpdate{}, nil
-		}
-
-		// rollup migration: return final ABCI validator updates
-		return k.migrateNow(ctx, migrationData, lastValidatorSet)
-	}
-
-	if migrationData.StayOnComet {
-		// StayOnComet with IBC enabled: from the very first smoothing step, keep
-		// membership constant and reweight CometBFT powers so that the sequencer
-		// alone has >1/3 voting power. This removes timing sensitivity for IBC
-		// client updates.
-
-		// Final step: set sequencer power=1 and undelegate sequencer
-		if step+1 == IBCSmoothingFactor {
-			k.Logger(ctx).Info("StayOnComet: finalization step, setting sequencer power=1 and undelegating all delegations")
-
-			for _, val := range lastValidatorSet {
-				if err := k.unbondValidatorDelegations(ctx, val); err != nil {
-					return nil, err
-				}
-			}
-
-			// ABCI updates: zero all non-sequencers, set sequencer to 1
-			var updates []abci.ValidatorUpdate
-			validatorsToRemove := getValidatorsToRemove(migrationData, lastValidatorSet)
-			for _, val := range validatorsToRemove {
-				updates = append(updates, val.ABCIValidatorUpdateZero())
-			}
-			pk, err := migrationData.Sequencer.TmConsPublicKey()
-			if err != nil {
-				return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to get sequencer pubkey: %v", err)
-			}
-			updates = append(updates, abci.ValidatorUpdate{PubKey: pk, Power: 1})
-
-			// increment step to mark completion next block
-			if err := k.MigrationStep.Set(ctx, step+1); err != nil {
-				return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to set migration step: %v", err)
-			}
-
-			return updates, nil
-		}
-
-		// emit reweighting updates: ensure sequencer gets large power, others get 1.
-		n := len(lastValidatorSet)
-		if n == 0 {
-			return []abci.ValidatorUpdate{}, nil
-		}
-		seqPower := int64(2 * n)
-		var updates []abci.ValidatorUpdate
-		for _, val := range lastValidatorSet {
-			pk, err := val.CmtConsPublicKey()
-			if err != nil {
-				return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to get validator pubkey: %v", err)
-			}
-			power := int64(1)
-			if val.ConsensusPubkey.Equal(migrationData.Sequencer.ConsensusPubkey) {
-				power = seqPower
-			}
-			updates = append(updates, abci.ValidatorUpdate{PubKey: pk, Power: power})
-		}
-
-		// advance smoothing step
-		if err := k.MigrationStep.Set(ctx, step+1); err != nil {
-			return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to set migration step: %v", err)
-		}
-
-		return updates, nil
-	}
-
-	// rollup migration: build and return ABCI updates directly
-	switch len(migrationData.Attesters) {
-	case 0:
-		// no attesters, migrate to a single sequencer over smoothing period
-		// remove all validators except the sequencer, add sequencer at the end
-		seq := migrationData.Sequencer
-		var oldValsToRemove []stakingtypes.Validator
-		for _, val := range lastValidatorSet {
-			if !val.ConsensusPubkey.Equal(seq.ConsensusPubkey) {
-				oldValsToRemove = append(oldValsToRemove, val)
-			}
-		}
-		removePerStep := (len(oldValsToRemove) + int(IBCSmoothingFactor) - 1) / int(IBCSmoothingFactor)
-		startRemove := int(step) * removePerStep
-		endRemove := min(startRemove+removePerStep, len(oldValsToRemove))
-		for _, val := range oldValsToRemove[startRemove:endRemove] {
-			powerUpdate := val.ABCIValidatorUpdateZero()
-			initialValUpdates = append(initialValUpdates, powerUpdate)
-		}
-	default:
-		// attesters present, migrate as before
-		attesterPubKeys := make(map[string]struct{})
-		for _, attester := range migrationData.Attesters {
-			attesterPubKeys[attester.ConsensusPubkey.String()] = struct{}{}
-		}
-		var oldValsToRemove []stakingtypes.Validator
-		for _, val := range lastValidatorSet {
-			if _, ok := attesterPubKeys[val.ConsensusPubkey.String()]; !ok {
-				oldValsToRemove = append(oldValsToRemove, val)
-			}
-		}
-		lastValPubKeys := make(map[string]struct{})
-		for _, val := range lastValidatorSet {
-			lastValPubKeys[val.ConsensusPubkey.String()] = struct{}{}
-		}
-		var newAttestersToAdd []types.Attester
-		for _, attester := range migrationData.Attesters {
-			if _, ok := lastValPubKeys[attester.ConsensusPubkey.String()]; !ok {
-				newAttestersToAdd = append(newAttestersToAdd, attester)
-			}
-		}
-		removePerStep := (len(oldValsToRemove) + int(IBCSmoothingFactor) - 1) / int(IBCSmoothingFactor)
-		addPerStep := (len(newAttestersToAdd) + int(IBCSmoothingFactor) - 1) / int(IBCSmoothingFactor)
-		startRemove := int(step) * removePerStep
-		endRemove := min(startRemove+removePerStep, len(oldValsToRemove))
-		for _, val := range oldValsToRemove[startRemove:endRemove] {
-			powerUpdate := val.ABCIValidatorUpdateZero()
-			initialValUpdates = append(initialValUpdates, powerUpdate)
-		}
-		startAdd := int(step) * addPerStep
-		endAdd := min(startAdd+addPerStep, len(newAttestersToAdd))
-		for _, attester := range newAttestersToAdd[startAdd:endAdd] {
-			pk, err := attester.TmConsPublicKey()
-			if err != nil {
-				return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to get attester pubkey: %v", err)
-			}
-			attesterUpdate := abci.ValidatorUpdate{
-				PubKey: pk,
-				Power:  1,
-			}
-			initialValUpdates = append(initialValUpdates, attesterUpdate)
-		}
-	}
-
-	// increment and persist the step
-	if err := k.MigrationStep.Set(ctx, step+1); err != nil {
-		return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to set migration step: %v", err)
-	}
-
-	// the first time, we set the whole validator set to the same validator power. This is to avoid a validator ends up with >= 33% or worse >= 66%
-	// vp during the migration.
-	// TODO: add a test
-	if step == 0 {
-		// Create a map of existing updates for O(1) lookup
-		existingUpdates := make(map[string]bool)
-		for _, powerUpdate := range initialValUpdates {
-			existingUpdates[powerUpdate.PubKey.String()] = true
-		}
-
-		// set the whole validator set to the same power
-		for _, val := range lastValidatorSet {
-			valPubKey, err := val.CmtConsPublicKey()
-			if err != nil {
-				return nil, sdkerrors.ErrInvalidRequest.Wrapf("failed to get validator pubkey: %v", err)
-			}
-
-			if !existingUpdates[valPubKey.String()] {
-				powerUpdate := abci.ValidatorUpdate{
-					PubKey: valPubKey,
-					Power:  1,
-				}
-				initialValUpdates = append(initialValUpdates, powerUpdate)
-			}
-		}
 	}
 
 	return initialValUpdates, nil
