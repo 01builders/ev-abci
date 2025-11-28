@@ -38,8 +38,6 @@ import (
 )
 
 const (
-	// matches the variable of the same name in ev-abci.
-	IBCSmoothingFactor = 30
 	// firstClientID is the name of the first client that is generated. NOTE: for this test it is always the same
 	// as only a single client is being created on each chain.
 	firstClientID = "07-tendermint-1"
@@ -61,13 +59,6 @@ type SingleValidatorSuite struct {
 	preMigrationIBCBal sdk.Coin
 
 	migrationHeight uint64
-	// number of validators on the primary chain at test start
-	initialValidators int
-
-	// last height on the primary chain (subject) for which we've
-	// successfully attempted a client update on the counterparty (host).
-	// Used to step updates height-by-height during migration.
-	lastUpdatedChainOnCounterparty int64
 }
 
 func TestSingleValSuite(t *testing.T) {
@@ -137,13 +128,11 @@ func (s *SingleValidatorSuite) TestNTo1StayOnCometMigration() {
 		s.waitForMigrationCompletion(ctx)
 	})
 
-	// Ensure the light client on the counterparty has consensus states for
-	// every height across the migration window. This can be done AFTER the
-	// migration by backfilling one height at a time.
-	// The equivalent of this needs to be done for each counterparty.
-	t.Run("backfill_client_updates", func(t *testing.T) {
-		end := int64(s.migrationHeight + IBCSmoothingFactor)
-		err := s.backfillChainClientOnCounterpartyUntil(ctx, end)
+	// Perform client update at H + 1 to ensure the counterparty's light client can verify the new validator set.
+	// At H, the val updates are returned in EndBlock, by specifically sending a client update at H + 1, we ensure that
+	// subsequent ibc messages will succeed.
+	t.Run("client_updates_at_upgrade", func(t *testing.T) {
+		err := updateClientAtHeight(ctx, s.hermes, s.counterpartyChain, firstClientID, int64(s.migrationHeight+1))
 		s.Require().NoError(err)
 	})
 
@@ -317,8 +306,11 @@ func (s *SingleValidatorSuite) submitSingleValidatorMigrationProposal(ctx contex
 	curHeight, err := s.chain.Height(ctx)
 	s.Require().NoError(err)
 
-	// schedule migration 30 blocks in the future to allow governance
-	migrateAt := uint64(curHeight + IBCSmoothingFactor)
+	// schedule migration some blocks in the future to allow governance to pass
+	// keep this small to speed up the test
+	// allow enough blocks for deposit and voting to complete
+	const governanceBuffer = 30
+	migrateAt := uint64(curHeight + governanceBuffer)
 	s.migrationHeight = migrateAt
 	s.T().Logf("Current height: %d, Migration at: %d", curHeight, migrateAt)
 
@@ -383,12 +375,13 @@ func (s *SingleValidatorSuite) getValidatorPubKey(ctx context.Context, conn *grp
 	return nil
 }
 
-// waitForMigrationCompletion waits for the 30-block migration window to complete
+// waitForMigrationCompletion waits for the migration to finalize on-chain
 func (s *SingleValidatorSuite) waitForMigrationCompletion(ctx context.Context) {
 	s.T().Log("Waiting for migration to complete...")
 
-	// migration should complete at migrationHeight + IBCSmoothingFactor (30 blocks)
-	targetHeight := int64(s.migrationHeight + IBCSmoothingFactor)
+	// migration updates are emitted at migrationHeight, and take effect at migrationHeight+1.
+	// wait until at least migrationHeight+2 to ensure finalization has occurred.
+	targetHeight := int64(s.migrationHeight + 2)
 
 	err := wait.ForCondition(ctx, time.Hour, 10*time.Second, func() (bool, error) {
 		h, err := s.chain.Height(ctx)
@@ -635,38 +628,4 @@ func updateClientAtHeight(ctx context.Context, hermes *relayer.Hermes, host *cos
 	}
 	_, _, err := hermes.Exec(ctx, hermes.Logger, cmd, nil)
 	return err
-}
-
-// backfillChainClientOnCounterpartyUntil steps from the host client's current
-// trusted height + 1 up to and including endHeight on the subject chain.
-func (s *SingleValidatorSuite) backfillChainClientOnCounterpartyUntil(ctx context.Context, endHeight int64) error {
-	if s.chain == nil || s.counterpartyChain == nil || s.hermes == nil {
-		return fmt.Errorf("missing chain(s) or hermes")
-	}
-
-	// Start from host client's current trusted height + 1 to ensure continuity.
-	trusted, err := queryClientRevisionHeight(ctx, s.counterpartyChain, firstClientID)
-	if err != nil {
-		return err
-	}
-
-	// Always start from the client's current trusted height + 1 on the host chain
-	startHeight := trusted + 1
-	if startHeight < 1 {
-		startHeight = 1
-	}
-
-	// Do not go past the requested endHeight
-	if endHeight < startHeight {
-		return nil
-	}
-
-	for h := startHeight; h <= endHeight; h++ {
-		if err := updateClientAtHeight(ctx, s.hermes, s.counterpartyChain, firstClientID, h); err != nil {
-			s.T().Logf("backfill update at height %d failed: %v", h, err)
-			return err
-		}
-		s.lastUpdatedChainOnCounterparty = h
-	}
-	return nil
 }

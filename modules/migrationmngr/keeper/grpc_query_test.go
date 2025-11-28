@@ -112,7 +112,6 @@ func initFixture(tb testing.TB) *fixture {
 		storeService,
 		addressCodec,
 		stakingKeeper,
-		nil,
 		sdk.AccAddress(address.Module(types.ModuleName)).String(),
 	)
 
@@ -163,41 +162,6 @@ func TestIsMigrating(t *testing.T) {
 	require.True(t, resp.IsMigrating)
 	require.Equal(t, uint64(1), resp.StartBlockHeight)
 	require.Equal(t, uint64(2), resp.EndBlockHeight)
-}
-
-func TestIsMigrating_IBCEnabled(t *testing.T) {
-	stakingKeeper := &mockStakingKeeper{}
-	key := storetypes.NewKVStoreKey(types.ModuleName)
-	storeService := runtime.NewKVStoreService(key)
-	encCfg := moduletestutil.MakeTestEncodingConfig(migrationmngr.AppModuleBasic{})
-	addressCodec := addresscodec.NewBech32Codec("cosmos")
-	ibcKey := storetypes.NewKVStoreKey("ibc")
-	ctx := testutil.DefaultContextWithKeys(map[string]*storetypes.KVStoreKey{
-		types.ModuleName: key,
-		"ibc":            ibcKey,
-	}, nil, nil)
-
-	k := keeper.NewKeeper(
-		encCfg.Codec,
-		storeService,
-		addressCodec,
-		stakingKeeper,
-		func() *storetypes.KVStoreKey { return key },
-		sdk.AccAddress(address.Module(types.ModuleName)).String(),
-	)
-
-	// set up migration
-	require.NoError(t, k.Migration.Set(ctx, types.EvolveMigration{
-		BlockHeight: 1,
-		Sequencer:   types.Sequencer{Name: "foo"},
-	}))
-
-	ctx = ctx.WithBlockHeight(1)
-	resp, err := keeper.NewQueryServer(k).IsMigrating(ctx, &types.QueryIsMigratingRequest{})
-	require.NoError(t, err)
-	require.True(t, resp.IsMigrating)
-	require.Equal(t, uint64(1), resp.StartBlockHeight)
-	require.Equal(t, 1+keeper.IBCSmoothingFactor, resp.EndBlockHeight)
 }
 
 func TestSequencer_Migrating(t *testing.T) {
