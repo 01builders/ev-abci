@@ -4,8 +4,7 @@
 
 The `migrationmngr` module orchestrates a one-time, coordinated transition of the chain's consensus participants. It supports:
 
-- Staying on CometBFT with a single validator when `stay_on_comet = true` (still a Cosmos SDK chain, not a rollup), or
-- Halting after migration when `stay_on_comet = false` to force a binary switch (e.g., to Evolve).
+- Staying on CometBFT with a single validator when `stay_on_comet = true` (still a Cosmos SDK chain, not a rollup)
 
 ## Initiating a Migration
 
