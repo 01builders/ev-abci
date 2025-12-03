@@ -2,15 +2,16 @@
 
 ## Introduction
 
-The `migrationmngr` module is a specialized module for orchestrating a one-time, coordinated transition of the chain's consensus participants. It is designed to migrate a standard proof-of-stake (PoS) validator set to a new topology, which can be either a single-sequencer setup or a sequencer-and-attester network. This is a fundamental component for evolving the chain from a sovereign Cosmos chain to a rollup.
+The `migrationmngr` module orchestrates a one-time, coordinated transition of the chain's consensus participants. It supports:
 
-The migration is designed to be robust and safe, with mechanisms to handle different scenarios, including whether the chain has active IBC connections.
+- Staying on CometBFT with a single validator when `stay_on_comet = true` (still a Cosmos SDK chain, not a rollup), or
+- Halting after migration when `stay_on_comet = false` to force a binary switch (e.g., to Evolve).
 
 ## Initiating a Migration
 
-The migration process is not automatic; it must be explicitly triggered by a governance proposal. This ensures that the chain's stakeholders have approved the transition.
+The migration process is not automatic, it must be explicitly triggered by a governance proposal. This ensures that the chain's stakeholders have approved the transition.
 
-The proposal must contain a `MsgMigrateToEvolve` message.
+The proposal must contain a `MsgMigrateToEvolve` message. If you set `stay_on_comet = true`, the chain will not halt after the migration completes and will continue running on CometBFT with a single validator.
 
 ### `MsgMigrateToEvolve`
 
@@ -18,20 +19,18 @@ This message instructs the `migrationmngr` module to begin the migration process
 
 -   `authority`: The address of the governance module. This is set automatically when submitted via a proposal.
 -   `block_height`: The block number at which the migration will start.
--   `sequencer`: An object defining the new sequencer.
-    -   `name`: A human-readable name for the sequencer.
-    -   `consensus_pubkey`: The consensus public key of the sequencer.
--   `attesters`: An optional list of objects defining the attesters. If this list is empty, the chain will migrate to a single-sequencer mode.
-    -   `name`: A human-readable name for the attester.
-    -   `consensus_pubkey`: The consensus public key of the attester.
+-   `sequencer`: Proto field name, populate it with the single validator's identity.
+    -   `name`: A human-readable name for the validator.
+    -   `consensus_pubkey`: The consensus public key of the validator.
+-   `attesters`: Not used in this scenario; leave as an empty list `[]`.
 
 ### Example Governance Proposals
 
 Below are examples of the `messages` array within a `submit-proposal` JSON file.
 
-#### Example 1: Migrating to a Single Sequencer
+#### Example 1: Migrating to a Single Validator
 
-This proposal will migrate the chain to be validated by a single sequencer, starting at block `1234567`.
+This proposal will migrate the chain to be validated by a single validator, starting at block `1234567`.
 
 ```json
 {
@@ -41,7 +40,7 @@ This proposal will migrate the chain to be validated by a single sequencer, star
       "authority": "cosmos10d07y265gmmuvt4z0w9aw880j2r6426u005ev2",
       "block_height": "1234567",
       "sequencer": {
-        "name": "sequencer-01",
+        "name": "validator-01",
         "consensus_pubkey": {
           "@type": "/cosmos.crypto.ed25519.PubKey",
           "key": "YOUR_SEQUENCER_PUBKEY_BASE64"
@@ -57,85 +56,39 @@ This proposal will migrate the chain to be validated by a single sequencer, star
 }
 ```
 
-#### Example 2: Migrating to a Sequencer and Attesters
-
-This proposal will migrate the chain to a new consensus set composed of one sequencer and two attesters, starting at block `1234567`.
-
-```json
-{
-  "messages": [
-    {
-      "@type": "/evabci.migrationmngr.v1.MsgMigrateToEvolve",
-      "authority": "cosmos10d07y265gmmuvt4z0w9aw880j2r6426u005ev2",
-      "block_height": "1234567",
-      "sequencer": {
-        "name": "sequencer-01",
-        "consensus_pubkey": {
-          "@type": "/cosmos.crypto.ed25519.PubKey",
-          "key": "YOUR_SEQUENCER_PUBKEY_BASE64"
-        }
-      },
-      "attesters": [
-        {
-          "name": "attester-01",
-          "consensus_pubkey": {
-            "@type": "/cosmos.crypto.ed25519.PubKey",
-            "key": "ATTESTER_01_PUBKEY_BASE64"
-          }
-        },
-        {
-          "name": "attester-02",
-          "consensus_pubkey": {
-            "@type": "/cosmos.crypto.ed25519.PubKey",
-            "key": "ATTESTER_02_PUBKEY_BASE64"
-          }
-        }
-      ]
-    }
-  ],
-  "metadata": "...",
-  "deposit": "...",
-  "title": "Proposal to Migrate to a Sequencer and Attester Network",
-  "summary": "This proposal initiates the migration to a new network with one sequencer and two attesters."
-}
-```
+<!-- Example with attesters removed because this scenario is sequencer-only. -->
 
 ## How Migrations Work Under the Hood
 
 The migration process is managed through state machine logic that is triggered at a specific block height, defined by a governance proposal. Once a migration is approved and the block height is reached, the module's `EndBlock` and `PreBlock` logic take over.
 
-There are two primary migration scenarios:
-
-1.  **Migration to a Single Sequencer**: The entire existing validator set is replaced by a single, designated sequencer. This entity becomes the sole block producer for the rollup.
-2.  **Migration to a Sequencer and Attesters**: The validator set is replaced by a new set of actors, including a primary sequencer and a group of "attesters" who provide additional validation or data availability services.
+In this scenario, the migration sets the chain to a single, designated validator which becomes the sole block producer.
 
 ### The Migration Mechanism
 
 The core of the migration is handled by returning `abci.ValidatorUpdate` messages to the underlying consensus engine (CometBFT). These updates change the voting power of validators.
 
--   **Removing Old Validators**: The existing validators that are not part of the new sequencer/attester set have their power reduced to `0`.
--   **Adding New Participants**: The new sequencer and/or attesters are added to the consensus set with a power of `1`.
+-   **Removing Old Validators**: The existing validators that are not the new single validator have their power reduced to `0`.
+-   **Adding New Participants**: The new single validator is added to the consensus set with a power of `1`.
 
-### IBC-Aware Migrations
+### IBC considerations
 
-A critical feature of the migration manager is its awareness of the Inter-Blockchain Communication (IBC) protocol. A sudden, drastic change in the validator set can cause IBC light clients on other chains to fail their verification checks, leading to a broken connection.
+After the upgrade completes, you must submit an IBC `MsgUpdateClient` at `migration_height + 1` for EVERY counterparty client to refresh their consensus state.
 
-To prevent this, the module first checks if IBC is enabled by verifying the existence of the IBC module's store key.
+With Hermes, for each counterparty and client ID, run:
 
--   **If IBC is Enabled**: The migration is "smoothed" over a period of blocks (currently `30` blocks, defined by `IBCSmoothingFactor`). In each block during this period, a fraction of the old validators are removed, and a fraction of the new attesters are added. This gradual change ensures that IBC light clients can safely update their trusted validator sets without interruption. On the first block of the migration, all validators are set to have an equal power of `1` to prevent any single validator from having a disproportionate amount of power during the transition.
--   **If IBC is Not Enabled**: The migration can be performed "immediately" in a single block. All old validators are removed, and the new sequencer/attesters are added in one atomic update at the migration start height.
-
-### The Chain Halt: A Coordinated Upgrade
-
-The most critical part of the process is the final step. One block *after* the migration period ends (`migration_end_height + 1`), the `PreBlock` logic is designed to panic and halt the chain.
-
-This is an intentional design choice to force a coordinated upgrade. When the chain halts, node operators will see a specific error message in their logs:
-
-```
-MIGRATE: chain migration to evolve is complete. Switch to the evolve binary and run 'gmd evolve-migrate' to complete the migration.
+```bash
+hermes --json update client \
+  --host-chain <HOST_CHAIN_ID> \
+  --client <CLIENT_ID> \
+  --height $((migration_height+1))
 ```
 
-This halt ensures that all participants must manually intervene to switch to the new software, preventing a chain split or other inconsistencies. Before halting, the module cleans up the migration state from the store to ensure the chain does not halt again on restart.
+### A Coordinated Upgrade
+
+The final step depends on the `stay_on_comet` flag provided in the proposal.
+
+- One block after the migration end (`migration_height + 1`) the module cleans up migration state and continues running on CometBFT without halting and the chain now runs with the configured single validator.
 
 ## What Validators and Node Operators Need to Do
 
@@ -143,14 +96,9 @@ If you are a validator or node operator on a chain using this module, you must b
 
 1.  **Monitor Governance**: The migration will be initiated by a governance proposal. Stay informed about upcoming proposals. The proposal will define the target block height for the migration.
 
-2.  **Prepare for the Chain Halt**: Your node **will stop** at a predictable block height, calculated from the migration's start height (`block_height` in the proposal). With IBC enabled, the halt is at `block_height + 31`; without IBC, it is `block_height + 2`. This is expected. Check your node's logs for the specific "MIGRATE" error message.
+2.  **Migration completion behavior**:
+    - If `stay_on_comet = true`: The chain does not halt. It continues on CometBFT with the single validator. No operator action is required beyond normal operations. if using IBC, plan to `MsgUpdateClient` at `migration_height + 1` on counterparties.
 
-3.  **Perform the Upgrade**: Once the chain has halted, you must perform the following steps:
-    a. **Install the New Binary**: You will need to replace your current node software (e.g., `gmd`) with the new version required for the rollup.
-    b. **Run the Migration Command**: The error message will instruct you to run a command like `gmd evolve-migrate`. This command will handle any necessary state or configuration changes on your local node to make it compatible with the new network topology.
-    c. **Restart Your Node**: After running the migration command, you can restart your node. It will now be operating as part of the new rollup network (either as a sequencer or attester, depending on the new configuration).
-
-Your role will fundamentally change from a proof-of-stake validator to a participant in the rollup's new consensus mechanism.
 
 ## Application Wiring (`app.go`)
 
@@ -206,3 +154,41 @@ import (
 ```
 
 If you're using depinject, the staking wrapper module will be automatically wired through the dependency injection system and will prevent validator updates from the staking module while allowing the `migrationmngr` module to control validator set changes during migrations.
+
+### 3. Wiring examples
+
+Below are minimal code snippets to help wire the module and keeper.
+
+- Using traditional `module.Manager` in `app.go`:
+
+```go
+import (
+    // modules
+    migrationmngrmodule "github.com/evstack/ev-abci/modules/migrationmngr"
+    stakingwrapper "github.com/evstack/ev-abci/modules/staking"
+
+    // staking types remain the same
+    stakingtypes "github.com/cosmos/cosmos-sdk/x/staking/types"
+)
+
+// in NewApp(...)
+m := module.NewManager(
+    // ... other modules ...
+    stakingwrapper.NewAppModule(appCodec, stakingKeeper, accountKeeper, bankKeeper, legacySubspace),
+    migrationmngrmodule.NewAppModule(appCodec, app.MigrationmngrKeeper),
+)
+```
+
+- Using depinject app config (module registration is handled by init registrations):
+
+```go
+// Import the modules somewhere in your app so their init() runs:
+import (
+    _ "github.com/evstack/ev-abci/modules/migrationmngr"
+    _ "github.com/evstack/ev-abci/modules/staking"
+)
+
+// In your app config (protobuf or go-based), ensure x/staking is the wrapper
+// by importing the module above; it will register itself and provide the keeper.
+// migrationmngr's depinject provider expects a StakingKeeper and will wire itself.
+```
